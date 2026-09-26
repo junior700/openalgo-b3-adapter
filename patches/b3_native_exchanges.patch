@@ -1,0 +1,35 @@
+# Patch OPCIONAL: adiciona camaras nativas B3 ao core do OpenAlgo.
+# Sem este patch o plugin funciona com os codigos genericos
+# (NSE/NFO/MCX/NSE_INDEX) — modo zero-modificacao.
+#
+# Aplique dentro da raiz do openalgo:
+#   git apply caminho/para/b3_native_exchanges.patch
+#
+#utils/constants.py
+# --- a/utils/constants.py
+# +++ b/utils/constants.py
+# @@ (adicione ao conjunto VALID_EXCHANGES)
+# +VALID_EXCHANGES.extend(["B3", "B3OPT", "B3FUT", "B3_INDEX"])
+#
+# Com o patch aplicado, o plugin aceita os dois conjuntos de codigos:
+# o mapa de segmentos em openalgo_b3_adapter/config/b3_config.py
+# (OA_NATIVE_EXCHANGE_MAP) ja contempla B3/B3OPT/B3FUT/B3_INDEX.
+diff --git a/utils/constants.py b/utils/constants.py
+--- a/utils/constants.py
++++ b/utils/constants.py
+@@ -1,6 +1,10 @@
+ # VALID_EXCHANGES: codigos de camara aceitos pelo core
+ VALID_EXCHANGES = [
+     "NSE",
+     "BSE",
+     "NFO",
+     "MCX",
+     "CDS",
+     "BANKNIFTY",
+     "NSE_INDEX",
+     "BSE_INDEX",
++    "B3",
++    "B3OPT",
++    "B3FUT",
++    "B3_INDEX",
+ ]

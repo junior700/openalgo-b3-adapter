@@ -1,0 +1,12 @@
+{
+    "Plugin Name": "B3 Brasil",
+    "Plugin URI": "https://github.com/junior700/openalgo-b3-adapter",
+    "Description": "OpenAlgo Plugin para o mercado brasileiro (B3) - acoes, opcoes, futuros, FIIs",
+    "Version": "0.1.0",
+    "Author": "Prof. Helio R Freitas Jr",
+    "Author URI": "https://github.com/junior700",
+    "supported_exchanges": ["NSE", "NFO", "MCX", "NSE_INDEX"],
+    "broker_type": "BR_stock",
+    "leverage_config": false,
+    "notes": "Codigos de camara reutilizados no modo zero-mod: NSE=mercado a vista B3, NFO=opcoes B3, MCX=futuros B3, NSE_INDEX=indices B3. Veja docs/INSTALL.md para o modo nativo (patch opcional)."
+}
