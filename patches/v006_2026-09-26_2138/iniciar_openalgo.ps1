@@ -31,7 +31,7 @@ if (-not $candidates) {
     # Auto-instalacao: clona o OpenAlgo oficial (zero modificacoes) na raiz
     Write-Host "[1/5] Core do OpenAlgo ausente. Clonando o oficial do GitHub..."
     $dest = Join-Path $PSScriptRoot "openalgo"
-    git clone --depth 1 https://github.com/marketcalls/openalgo.git $dest
+    git clone --depth 1 https://github.com/openalgo/openalgo.git $dest
     if (Test-Path (Join-Path $dest "app.py")) {
         $OA = (Resolve-Path $dest).Path
     } else {
