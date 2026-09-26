@@ -57,6 +57,18 @@ broker/b3/api/data.py ──► openalgo_b3_adapter.market_data ──► Brapi 
 * WebFeed oficial da B3 requer licença paga (docs/BROKERS-BR.md)
 ```
 
+## Replica e patches (estratégia Desktop_Agent)
+
+- **`replicar_github.ps1`** (ou `.bat`): coloque numa pasta raiz genérica e
+  rode — clona o projeto do GitHub (repositório público) e oferece
+  atualização por `git pull` quando já existe.
+- **Correções futuras** viram patches versionados e autodestrutivos:
+  `python gerar_patch.py -m "desc" arquivos...` gera
+  `patches/vNNN_data/patch_vNNN.ps1` que embute os novos conteúdos, faz
+  backup da versão antiga em `anteriores/`, se registra em `registro.csv`
+  e se autodestrói após aplicar. Detalhes em
+  [docs/PATCHES.md](docs/PATCHES.md).
+
 ## Corretora fantasma (ambiente simulado de operação)
 
 O gateway `sandbox` pode virar uma **corretora fantasma completa** para
