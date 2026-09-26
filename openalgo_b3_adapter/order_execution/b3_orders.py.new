@@ -1,0 +1,239 @@
+"""Gateways de execucao de ordens (padrao B3).
+
+`B3OrderGateway` e a interface que cada corretora brasileira implementa.
+O registro global escolhe o gateway via env B3_BROKER_GATEWAY (padrao:
+sandbox). Gateways reais dependem de onboarding com a corretora (veja
+brokers/nuinvest.py e brokers/btg.py para stubs documentados).
+
+SandboxGateway: simulador in-memory deterministico, com ciclo de vida de
+ordem (new/open/complete/cancelled/rejected), book, posicoes e funds —
+para desenvolvimento e testes, no espirito do plugin dhan_sandbox do
+OpenAlgo.
+"""
+from __future__ import annotations
+
+import datetime as _dt
+import itertools
+import threading
+from typing import Any, Callable, Dict, List, Optional
+
+from openalgo_b3_adapter.config.b3_config import DEFAULT_GATEWAY, get_config
+from openalgo_b3_adapter.order_execution.b3_validation import (
+    OrderRequest, OrderValidationError, validate_order,
+)
+
+__all__ = ["B3OrderGateway", "register_gateway", "get_gateway", "SandboxGateway",
+           "map_openalgo_order"]
+
+
+class B3OrderGateway:
+    """Contrato de gateway de corretora B3 (uma instancia por auth token)."""
+
+    name = "base"
+
+    def place_order(self, req: OrderRequest, auth: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def cancel_order(self, order_id: str, auth: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def modify_order(self, order_id: str, req: OrderRequest, auth: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def get_orders(self, auth: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def get_trades(self, auth: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def get_positions(self, auth: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def get_holdings(self, auth: str) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    def get_funds(self, auth: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Registro de gateways
+# ---------------------------------------------------------------------------
+
+_GATEWAYS: Dict[str, Callable[[], B3OrderGateway]] = {}
+
+
+def register_gateway(name: str, factory: Callable[[], B3OrderGateway]) -> None:
+    _GatewaysProxy._factories[name] = factory
+
+
+def get_gateway(name: Optional[str] = None) -> "B3OrderGateway":
+    from openalgo_b3_adapter.order_execution.brokers.nuinvest import NuInvestGateway
+    from openalgo_b3_adapter.order_execution.brokers.btg import BTGGateway
+
+    registry: Dict[str, Callable[[], B3OrderGateway]] = {
+        "sandbox": SandboxGateway,
+        "nuinvest": NuInvestGateway,
+        "btg": BTGGateway,
+    }
+    import os as _os
+    gateway_name = (name or _os.getenv("B3_BROKER_GATEWAY") or get_config().gateway or DEFAULT_GATEWAY).lower()
+    factory = registry.get(gateway_name)
+    if factory is None:
+        raise ValueError(
+            f"Gateway '{gateway_name}' desconhecido. Disponiveis: {sorted(registry)}"
+        )
+    return factory()
+
+
+class _GatewaysProxy:  # mantem compat futura com factories dinamicos
+    _factories: Dict[str, Callable[[], B3OrderGateway]] = {}
+
+
+def map_openalgo_order(
+    data: Dict[str, Any],
+    br_symbol: str,
+    reference_price: Optional[float] = None,
+) -> OrderRequest:
+    """Converte payload de ordem do OpenAlgo em OrderRequest B3.
+
+    `data` e o dict validado pelo schema do core (apikey, strategy, symbol,
+    exchange, action, quantity, pricetype, price, trigger_price, product...).
+    `br_symbol` e o código B3 resolvido pelo master contract (plugin).
+    """
+    pricetype = (data.get("pricetype") or "MARKET").strip().upper()
+    side_map = {"BUY": "BUY", "SELL": "SELL"}
+    side = side_map.get((data.get("action") or "").strip().upper())
+    if side is None:
+        raise OrderValidationError("action deve ser BUY ou SELL", code="INVALID_SIDE")
+    return OrderRequest(
+        symbol=br_symbol,
+        oa_symbol=str(data.get("symbol") or br_symbol),
+        side=side,
+        quantity=int(data.get("quantity") or 0),
+        order_type=pricetype,
+        price=float(data.get("price") or 0),
+        trigger_price=float(data.get("trigger_price") or 0),
+        validity="DAY",
+        product=(data.get("product") or "CNC").strip().upper(),
+        exchange=(data.get("exchange") or "NSE").strip().upper(),
+        reference_price=reference_price,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sandbox: simulador in-memory
+# ---------------------------------------------------------------------------
+
+class SandboxGateway(B3OrderGateway):
+    """Corretora fantasma: simulador deterministico com ciclo de vida B3.
+
+    Modo dev (padrao, deterministico, offline):
+    - MARKET executa a `reference_price` (ou 100.00) na hora.
+    - LIMIT/SL ficam 'open' ate `fill_order()` (testes) ou canceladas.
+
+    Modo corretora fantasma (paper trading):
+    - `state_file` (ou env B3_SANDBOX_STATE_FILE): estado persistido em JSON;
+      ordens/trades/posicoes/caixa sobrevivem a restarts.
+    - `use_live_quotes=True` (ou env B3_SANDBOX_LIVE_FILLS=1): fills MARKET
+      usam a cotação real (Brapi/HG) com fallback deterministico; posicoes
+      ganham ltp e PnL nao realizado.
+    - `auto_tick_seconds>0` (ou env B3_SANDBOX_AUTO_TICK): motor de ticks em
+      background que busca cotações periodicamente e executa sozinho:
+      LIMIT (compra: preco<=limite; venda: preco>=limite) e SL/SL-M
+      (disparo no gatilho) — comportamento de corretora, sem dinheiro real.
+    """
+
+    name = "sandbox"
+
+    def __init__(
+        self,
+        initial_cash: float = 100_000.0,
+        ignore_sessions: Optional[bool] = None,
+        state_file: Optional[str] = None,
+        use_live_quotes: Optional[bool] = None,
+        auto_tick_seconds: Optional[float] = None,
+        quote_provider: Optional[Any] = None,
+    ):
+        import os as _os
+
+        self._lock = threading.RLock()
+        self._ids = itertools.count(1)
+        self._initial_cash = float(initial_cash)
+        self._ignore_sessions = (
+            get_config().sandbox_ignore_sessions
+            if ignore_sessions is None else ignore_sessions
+        )
+        self._state_file = state_file or _os.getenv("B3_SANDBOX_STATE_FILE") or None
+        if use_live_quotes is None:
+            use_live_quotes = _os.getenv("B3_SANDBOX_LIVE_FILLS", "").strip() in ("1", "true", "yes", "on")
+        self._use_live_quotes = bool(use_live_quotes or auto_tick_seconds)
+        if auto_tick_seconds is None:
+            _env = _os.getenv("B3_SANDBOX_AUTO_TICK", "").strip()
+            auto_tick_seconds = float(_env) if _env else 0.0
+        self._auto_tick_seconds = float(auto_tick_seconds or 0.0)
+        self._quote_provider = quote_provider
+        self._quotes: Dict[str, float] = {}
+        self._tick_thread: Optional[threading.Thread] = None
+        self._tick_stop = threading.Event()
+
+        # estado por auth token
+        self._orders: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self._trades: Dict[str, List[Dict[str, Any]]] = {}
+        self._cash: Dict[str, float] = {}
+        self._positions: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+        self._load()
+        if self._auto_tick_seconds > 0:
+            self._tick_thread = threading.Thread(
+                target=self._tick_loop, name="b3-ghost-tick", daemon=True,
+            )
+            self._tick_thread.start()
+
+    # -- persistencia ------------------------------------------------------
+    def _load(self) -> None:
+        import json as _json
+
+        if not (self._state_file and _os_path_exists(self._state_file)):
+            return
+        try:
+            with open(self._state_file, "r", encoding="utf-8") as fh:
+                data = _json.load(fh)
+            self._orders = {a: {oid: dict(o) for oid, o in orders.items()}
+                            for a, orders in data.get("orders", {}).items()}
+            self._trades = {a: list(t) for a, t in data.get("trades", {}).items()}
+            self._cash = {a: float(c) for a, c in data.get("cash", {}).items()}
+            self._positions = {a: {s: dict(p) for s, p in pos.items()}
+                               for a, pos in data.get("positions", {}).items()}
+            self._quotes = {s: float(q) for s, q in data.get("quotes", {}).items()}
+            max_id = 0
+            for orders in self._orders.values():
+                for oid in orders:
+                    try:
+                        max_id = max(max_id, int(oid.rsplit("-", 1)[1]))
+                    except (ValueError, IndexError):
+                        pass
+            self._ids = itertools.count(max_id + 1)
+        except Exception:  # noqa: BLE001 — estado corrompido: começa limpo
+            self._orders, self._trades = {}, {}
+            self._cash, self._positions, self._quotes = {}, {}, {}
+
+    def _persist(self) -> None:
+        import json as _json
+
+        if not self._state_file:
+            return
+        data = {
+            "orders": self._orders,
+            "trades": self._trades,
+            "cash": self._cash,
+            "positions": self._positions,
+            "quotes": self._quotes,
+            "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        }
+        tmp = self._state_file + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            _json.dump(data, fh, ensure_ascii=False, indent=1)
+        _os_replace(tmp, self._state_file)
+
+    def _load = None  # placeholder removido

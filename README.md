@@ -57,6 +57,28 @@ broker/b3/api/data.py ──► openalgo_b3_adapter.market_data ──► Brapi 
 * WebFeed oficial da B3 requer licença paga (docs/BROKERS-BR.md)
 ```
 
+## Corretora fantasma (ambiente simulado de operação)
+
+O gateway `sandbox` pode virar uma **corretora fantasma completa** para
+funcionamento simulado — estado persistente, preços reais, execução
+automática de ordens LIMIT/SL:
+
+```bash
+export B3_BROKER_GATEWAY=sandbox
+export B3_SANDBOX_STATE_FILE=ghost_state.json   # sobrevive a restarts
+export B3_SANDBOX_LIVE_FILLS=1                  # fills à cotação real (Brapi/HG)
+export B3_SANDBOX_AUTO_TICK=30                  # motor de ticks: executa LIMIT/SL sozinho
+export B3_SANDBOX_INITIAL_CASH=100000           # caixa inicial
+```
+
+Com isso, `place_order` de compra LIMIT a 33,50 é executado sozinho quando a
+cotação real cai a 33,45; stop-loss SL-M dispara quando o preço cruza o
+gatilho; posições exibem PnL não realizado pela última cotação — tudo sem
+dinheiro real. Sem as flags, o sandbox permanece determinístico/offline
+(recomendado para testes automatizados).
+
+---
+
 ## Instalação rápida
 
 ```bash
