@@ -6,7 +6,7 @@ sandbox). Gateways reais dependem de onboarding com a corretora (veja
 brokers/nuinvest.py e brokers/btg.py para stubs documentados).
 
 SandboxGateway: simulador in-memory deterministico, com ciclo de vida de
-ordem (new/open/complete/cancelled/rejected), book, posicoes e funds â€”
+ordem (new/open/complete/cancelled/rejected), book, posicoes e funds —
 para desenvolvimento e testes, no espirito do plugin dhan_sandbox do
 OpenAlgo.
 """
@@ -63,10 +63,6 @@ class B3OrderGateway:
 _GATEWAYS: Dict[str, Callable[[], B3OrderGateway]] = {}
 
 
-_GATEWAY_INSTANCES: Dict[str, "B3OrderGateway"] = {}
-_GATEWAY_INSTANCES_LOCK = threading.Lock()
-
-
 def register_gateway(name: str, factory: Callable[[], B3OrderGateway]) -> None:
     _GatewaysProxy._factories[name] = factory
 
@@ -87,12 +83,7 @@ def get_gateway(name: Optional[str] = None) -> "B3OrderGateway":
         raise ValueError(
             f"Gateway '{gateway_name}' desconhecido. Disponiveis: {sorted(registry)}"
         )
-    # Singleton por nome: sem isso cada chamada cria uma instancia nova e o
-    # estado (ordens/posicoes/caixa) se perde entre chamadas do core.
-    with _GATEWAY_INSTANCES_LOCK:
-        if gateway_name not in _GATEWAY_INSTANCES:
-            _GATEWAY_INSTANCES[gateway_name] = factory()
-        return _GATEWAY_INSTANCES[gateway_name]
+    return factory()
 
 
 class _GatewaysProxy:  # mantem compat futura com factories dinamicos
@@ -108,7 +99,7 @@ def map_openalgo_order(
 
     `data` e o dict validado pelo schema do core (apikey, strategy, symbol,
     exchange, action, quantity, pricetype, price, trigger_price, product...).
-    `br_symbol` e o cÃ³digo B3 resolvido pelo master contract (plugin).
+    `br_symbol` e o código B3 resolvido pelo master contract (plugin).
     """
     pricetype = (data.get("pricetype") or "MARKET").strip().upper()
     side_map = {"BUY": "BUY", "SELL": "SELL"}
@@ -134,22 +125,6 @@ def map_openalgo_order(
 # Sandbox: simulador in-memory
 # ---------------------------------------------------------------------------
 
-def _default_sandbox_state_file() -> Optional[str]:
-    """Caminho padrao do estado da corretora fantasma (~/.b3_adapter/).
-
-    Persistencia por padrao: sem arquivo, ordens e posicoes morrem com o
-    processo. Falha silenciosa retorna None (modo volatil, como antes).
-    """
-    import os as _os
-
-    try:
-        base = _os.path.join(_os.path.expanduser("~"), ".b3_adapter")
-        _os.makedirs(base, exist_ok=True)
-        return _os.path.join(base, "sandbox_state.json")
-    except Exception:  # noqa: BLE001
-        return None
-
-
 class SandboxGateway(B3OrderGateway):
     """Corretora fantasma: simulador com ciclo de vida de ordem B3.
 
@@ -166,7 +141,7 @@ class SandboxGateway(B3OrderGateway):
     - `auto_tick_seconds > 0` (ou env B3_SANDBOX_AUTO_TICK=<segundos>):
       motor de ticks em background que busca cotacoes periodicamente e
       executa sozinho: LIMIT (compra preco<=limite, venda preco>=limite)
-      e SL/SL-M (disparo no gatilho) â€” comportamento de corretora,
+      e SL/SL-M (disparo no gatilho) — comportamento de corretora,
       sem dinheiro real.
     """
 
@@ -190,11 +165,7 @@ class SandboxGateway(B3OrderGateway):
             get_config().sandbox_ignore_sessions
             if ignore_sessions is None else ignore_sessions
         )
-        self._state_file = (
-            state_file
-            or _os.getenv("B3_SANDBOX_STATE_FILE")
-            or _default_sandbox_state_file()
-        )
+        self._state_file = state_file or _os.getenv("B3_SANDBOX_STATE_FILE") or None
         _env_cash = _os.getenv("B3_SANDBOX_INITIAL_CASH", "").strip()
         if _env_cash and initial_cash == 100_000.0:
             initial_cash = float(_env_cash)
@@ -248,7 +219,7 @@ class SandboxGateway(B3OrderGateway):
                     except (ValueError, IndexError):
                         pass
             self._ids = itertools.count(max_id + 1)
-        except Exception:  # noqa: BLE001 â€” estado corrompido: comeca limpo
+        except Exception:  # noqa: BLE001 — estado corrompido: comeca limpo
             self._orders, self._trades = {}, {}
             self._cash, self._positions, self._quotes = {}, {}, {}
 
@@ -293,7 +264,7 @@ class SandboxGateway(B3OrderGateway):
             if q and getattr(q, "ltp", None):
                 self._quotes[br_symbol] = float(q.ltp)
                 return float(q.ltp)
-        except Exception:  # noqa: BLE001 â€” sem rede: usa ultimo preco conhecido
+        except Exception:  # noqa: BLE001 — sem rede: usa ultimo preco conhecido
             pass
         return self._quotes.get(br_symbol)
 
@@ -527,7 +498,7 @@ class SandboxGateway(B3OrderGateway):
         while not self._tick_stop.wait(self._auto_tick_seconds):
             try:
                 self.tick()
-            except Exception:  # noqa: BLE001 â€” thread nunca derruba o processo
+            except Exception:  # noqa: BLE001 — thread nunca derruba o processo
                 pass
 
     def stop_tick(self) -> None:

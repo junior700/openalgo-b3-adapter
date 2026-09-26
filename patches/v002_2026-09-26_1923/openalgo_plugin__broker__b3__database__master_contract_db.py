@@ -25,7 +25,6 @@ from openalgo_b3_adapter.config.b3_config import (
     OA_EXCHANGE_SEGMENT_MAP, SEGMENT_BREXCHANGE,
 )
 from openalgo_b3_adapter.market_data.b3_seed import SEED_INSTRUMENTS, SEED_OPTION_EXAMPLES
-from openalgo_b3_adapter.market_data.opcoesnet_chain import fetch_option_chain
 
 try:
     from extensions import socketio
@@ -114,40 +113,6 @@ def _seed_rows():
     return rows
 
 
-def _opcoesnet_chain_rows(existing_symbols):
-    """Opcoes reais (serie vigente) via matrizes publicas do opcoes.net.br.
-
-    Falha de rede degrada para lista vazia â€” as sementes ilustrativas e a
-    carga Brapi permanecem. Subjacentes configuraveis:
-        B3_OPTION_UNDERLYINGS="PETR4,VALE3"  (padrao)
-        B3_OPTION_CHAIN=0 desativa a carga.
-    """
-    if os.getenv("B3_OPTION_CHAIN", "1") != "1":
-        return []
-    underlyings = [
-        u.strip().upper()
-        for u in os.getenv("B3_OPTION_UNDERLYINGS", "PETR4,VALE3").split(",")
-        if u.strip()
-    ]
-    rows = []
-    for underlying in underlyings:
-        for opt in fetch_option_chain(underlying):
-            brsymbol = opt["brsymbol"]
-            if not brsymbol or brsymbol in existing_symbols:
-                continue
-            existing_symbols.add(brsymbol)
-            rows.append({
-                "symbol": brsymbol, "brsymbol": brsymbol,
-                "name": f"Opcao {underlying} {opt['option_type']}",
-                "exchange": "NFO", "brexchange": "B3OPT", "token": brsymbol,
-                "expiry": opt.get("expiry") or "",
-                "strike": float(opt["strike"]) if opt.get("strike") else 0.0,
-                "lotsize": opt.get("lotsize", 100),
-                "instrumenttype": "OPTSTK", "tick_size": 0.01,
-            })
-    return rows
-
-
 def _brapi_ticker_rows():
     """Best-effort: lista de tickers da Brapi quando hÃ¡ chave."""
     import httpx
@@ -197,7 +162,6 @@ def master_contract_download():
     Base.metadata.create_all(bind=engine)
 
     rows = _seed_rows()
-    rows += _opcoesnet_chain_rows({r["symbol"] for r in rows})
     rows += _brapi_ticker_rows()
     df = pd.DataFrame(rows)
     count = copy_from_dataframe(df)

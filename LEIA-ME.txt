@@ -1,0 +1,10 @@
+INICIADOR OPENALGO + B3 (1 clique)
+=================================
+1. Extraia TODO o conteudo deste zip na RAIZ do projeto
+   (a mesma pasta do sincronizar_github.ps1)
+2. De dois cliques em: iniciar_openalgo.bat
+3. O navegador abre sozinho em http://127.0.0.1:5000
+   Login: admin / OpenAlgo@B3Demo2026
+
+Se o antivirus bloquear o .bat, rode no PowerShell:
+  powershell -ExecutionPolicy Bypass -File .\iniciar_openalgo.ps1

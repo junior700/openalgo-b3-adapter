@@ -1,4 +1,4 @@
-"""Stubs das dependÃªncias do core OpenAlgo para importar o plugin standalone."""
+"""Stubs das dependências do core OpenAlgo para importar o plugin standalone."""
 import logging
 import sys
 import types
@@ -37,19 +37,3 @@ token_db.get_token = lambda symbol, exchange: _FAKE_MAP.get((symbol, exchange))
 database_mod.token_db = token_db
 if not hasattr(database_mod, "__path__"):
     database_mod.__path__ = []
-
-
-# --- isolacao da corretora fantasma -------------------------------------
-# O SandboxGateway agora persiste por padrao em ~/.b3_adapter/sandbox_state.json.
-# Cada teste recebe um arquivo de estado proprio para nao vazar estado entre
-# testes nem para o ambiente real do usuario.
-try:
-    import pytest
-
-    @pytest.fixture(autouse=True)
-    def _b3_isolated_sandbox_state(monkeypatch, tmp_path):
-        monkeypatch.setenv(
-            "B3_SANDBOX_STATE_FILE", str(tmp_path / "b3_sandbox_state.json")
-        )
-except ImportError:  # pragma: no cover â€” ambiente sem pytest (stubs standalone)
-    pass

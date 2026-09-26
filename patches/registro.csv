@@ -1,1 +1,4 @@
 versao;data-hora;arquivos;descricao
+v002_2026-09-26_1923;2026-09-26 19:23;openalgo_b3_adapter\order_execution\b3_orders.py|tests\conftest.py|openalgo_plugin\broker\b3\database\master_contract_db.py;singleton gateway + persistencia sandbox + schema master contract
+v003_2026-09-26_1938;2026-09-26 19:38;openalgo_b3_adapter\market_data\opcoesnet_chain.py|tests\test_opcoesnet_chain.py|openalgo_plugin\broker\b3\database\master_contract_db.py;serie real de opcoes B3 via opcoes.net.br no contrato mestre
+v005_2026-09-26_2021;2026-09-26 20:21;sincronizar_github.ps1|iniciar_openalgo.ps1;auto-bypass: scripts se reabrem com ExecutionPolicy Bypass + -NoExit (janela nao fecha)

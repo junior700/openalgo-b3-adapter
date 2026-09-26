@@ -15,18 +15,6 @@
 # Uso: powershell -ExecutionPolicy Bypass -File .\sincronizar_github.ps1
 # ============================================================
 
-# --- Auto-Bypass: reabre com -ExecutionPolicy Bypass (e janela que nao fecha) ---
-if ($env:OA_SELFRELAUNCH -ne "1") {
-    $env:OA_SELFRELAUNCH = "1"
-    $raiz = $PSScriptRoot
-    $arq  = $PSCommandPath
-    Start-Process -FilePath "powershell.exe" -ArgumentList @(
-        "-NoProfile","-ExecutionPolicy","Bypass","-NoExit",
-        "-Command","`$env:OA_SELFRELAUNCH='1'; Set-Location -LiteralPath '$raiz'; & '$arq'"
-    )
-    exit
-}
-
 $ErrorActionPreference = "Continue"
 
 $script:Repo = "https://github.com/junior700/openalgo-b3-adapter.git"
@@ -87,5 +75,3 @@ switch ($op) {
     }
     default { Write-Host "Saindo." }
 }
-Write-Host ""
-Read-Host "Enter para fechar"
