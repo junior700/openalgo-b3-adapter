@@ -1,4 +1,76 @@
 # ============================================================
+# patch.ps1 - aplicador automatico de correcoes
+# Projeto: openalgo-b3-adapter
+# Versao:  v026_2026-09-27_2223  |  Arquivos: 3
+# Descricao: PONTO DE ENTRADA UNICO: iniciar_b3.ps1 v2 funde o fluxo completo do iniciar_openalgo (espelho plugin, injecoes de fuso/candle/dropdown, venv, .env) nas opcoes [1]/[2]. Deleta iniciar_openalgo.ps1/.bat da maquina. So resta replicar_github (primeiro clone).
+#
+# COMO USAR (na raiz da instalacao replicada):
+#   powershell -ExecutionPolicy Bypass -File .\patch_v026_2026-09-27_2223.ps1
+#
+# O QUE ELE FAZ (nesta ordem):
+#   0. recusa re-aplicacao (patches\registro.csv) e pede confirmacao
+#   1. cria a pasta patches\v026_2026-09-27_2223\
+#   2. backup dos arquivos ATUAIS em v026_2026-09-27_2223\anteriores\
+#      (arquivo novo = inclusao, sem backup)
+#   3. grava os arquivos corrigidos nos lugares devidos
+#      (UTF-8 sem BOM; cria subpastas se faltar)
+#   4. guarda copia versionada dos novos em v026_2026-09-27_2223\
+#   5. guarda copia versionada DE SI MESMO em v026_2026-09-27_2223\
+#   6. anexa uma linha no patches\registro.csv
+#   7. mostra o resumo, espera ENTER e SE AUTODESTRUI
+#
+# RASTREIO: patches\registro.csv guarda versao, data, arquivos e
+# resultado. ROLLBACK MANUAL: copie de v026_2026-09-27_2223\anteriores\.
+#
+# REGRAS DO PROJETO: pausa antes de qualquer saida, confirmacao
+# antes de tocar em qualquer arquivo, token nunca gravado.
+# ============================================================
+
+$ErrorActionPreference = "Stop"
+$Raiz = $PSScriptRoot
+if (-not $Raiz) { $Raiz = (Get-Location).Path }
+
+$Ver  = "v026_2026-09-27_2223"
+$Desc = "PONTO DE ENTRADA UNICO: iniciar_b3.ps1 v2 funde o fluxo completo do iniciar_openalgo (espelho plugin, injecoes de fuso/candle/dropdown, venv, .env) nas opcoes [1]/[2]. Deleta iniciar_openalgo.ps1/.bat da maquina. So resta replicar_github (primeiro clone)."
+
+Write-Host ""
+Write-Host "=== PATCH AUTOMATICO - openalgo-b3-adapter ===" -ForegroundColor Cyan
+Write-Host "Versao: $Ver"
+Write-Host "Descricao: $Desc"
+Write-Host "Raiz do projeto: $Raiz"
+Write-Host ""
+
+# --- 0. recusa re-aplicacao ---
+$Registro = Join-Path $Raiz "patches\registro.csv"
+if (Test-Path $Registro) {
+    $ja = Get-Content $Registro -ErrorAction SilentlyContinue |
+          Where-Object { $_ -match "^$Ver;" }
+    if ($ja) {
+        Write-Host "Patch $Ver JA aplicado (registro.csv). Nada a fazer." -ForegroundColor Yellow
+        Read-Host "Pressione ENTER para sair"
+        exit 0
+    }
+}
+
+# --- confirmacao antes de tocar em qualquer arquivo ---
+$r = Read-Host "Aplicar este patch? [S/N]"
+if ($r -ne "S" -and $r -ne "s") {
+    Write-Host "Cancelado. Nenhum arquivo foi tocado."
+    Read-Host "Pressione ENTER para sair"
+    exit 0
+}
+
+# --- pasta da versao ---
+$DirVer = Join-Path $Raiz "patches\$Ver"
+$DirAnt = Join-Path $DirVer "anteriores"
+New-Item -ItemType Directory -Force -Path $DirVer | Out-Null
+New-Item -ItemType Directory -Force -Path $DirAnt | Out-Null
+
+# --- arquivos embutidos: destino relativo -> conteudo novo ---
+$Arquivos = @{
+
+    "iniciar_b3.ps1" = @'
+# ============================================================
 # iniciar_b3.ps1 (v2) - PONTO DE ENTRADA UNICO do projeto
 #
 # Um arquivo so. Antes existiam iniciar_openalgo.ps1/.bat
@@ -491,3 +563,93 @@ while ($true) {
         default { Write-Host "Opcao invalida."; Start-Sleep -Seconds 1 }
     }
 }
+'@
+
+    "iniciar_b3.bat" = @'
+@echo off
+REM dois cliques: PONTO DE ENTRADA UNICO (instalar, iniciar, sync GitHub, patch, diagnostico, testes)
+powershell -ExecutionPolicy Bypass -File "%~dp0iniciar_b3.ps1"
+'@
+
+    "LEIA-ME.txt" = @'
+OPENALGO + B3 (1 clique)
+========================
+1. Extraia TODO o conteudo deste zip na RAIZ do projeto
+2. De dois cliques em: iniciar_b3.bat
+3. Primeira vez: opcao [1] instalar, depois opcao [2] iniciar
+   (sobe o servidor, ajusta o fuso do grafico p/ Brasil e abre
+   o navegador em http://127.0.0.1:5000)
+4. Na tela de conectividade, selecione "B3 Brasil (Sandbox)" e
+   clique em Connect Account
+
+TUDO se faz pelo iniciar_b3.bat:
+  [1] instalar  [2] iniciar  [3] sincronizar GitHub (baixar+enviar)
+  [4] aplicar patch  [5] diagnostico  [6] testes
+Nao ha mais outros scripts de inicio/git na raiz; replicar_github
+existe so para o primeiro clone numa pasta vazia.
+
+IMPORTANTE: apos atualizar, faca um hard refresh no navegador
+(Ctrl+Shift+R) para pegar o frontend novo.
+'@
+
+}
+
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$Alterados = @()
+$Incluidos = @()
+
+foreach ($dest in $Arquivos.Keys) {
+    $alvo = Join-Path $Raiz $dest
+    $dirAlvo = Split-Path $alvo -Parent
+    if (-not (Test-Path $dirAlvo)) {
+        New-Item -ItemType Directory -Force -Path $dirAlvo | Out-Null
+    }
+    if (Test-Path $alvo) {
+        # 2. backup da versao ATUAL (antiga) antes de sobrescrever
+        $bk = Join-Path $DirAnt ($dest -replace "[\\/]", "__")
+        Copy-Item -LiteralPath $alvo -Destination $bk -Force
+        $Alterados += $dest
+    } else {
+        $Incluidos += $dest
+    }
+    # 3. grava o conteudo corrigido (UTF-8 sem BOM)
+    [System.IO.File]::WriteAllText($alvo, $Arquivos[$dest], $Utf8NoBom)
+    # 4. copia versionada do arquivo novo
+    $cp = Join-Path $DirVer ($dest -replace "[\\/]", "__")
+    Copy-Item -LiteralPath $alvo -Destination $cp -Force
+}
+
+# --- 5. copia versionada de si mesmo ---
+Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $DirVer "patch_v026_2026-09-27_2223.ps1") -Force
+
+# --- 6. registro ---
+$linha = "$Ver;2026-09-27 22:23;iniciar_b3.ps1|iniciar_b3.bat|LEIA-ME.txt;PONTO DE ENTRADA UNICO: iniciar_b3.ps1 v2 funde o fluxo completo do iniciar_openalgo (espelho plugin, injecoes de fuso/candle/dropdown, venv, .env) nas opcoes [1]/[2]. Deleta iniciar_openalgo.ps1/.bat da maquina. So resta replicar_github (primeiro clone).`n"
+[System.IO.File]::AppendAllText($Registro, $linha, $Utf8NoBom)
+
+# --- 6b. remove scripts antigos absorvidos pelo iniciar_b3.ps1 v2 ---
+$Removidos = @()
+foreach ($obsoleto in @("iniciar_openalgo.ps1", "iniciar_openalgo.bat")) {
+    $alvoObs = Join-Path $Raiz $obsoleto
+    if (Test-Path $alvoObs) {
+        $bkObs = Join-Path $DirAnt ($obsoleto -replace "[\\/]", "__")
+        Copy-Item -LiteralPath $alvoObs -Destination $bkObs -Force
+        Remove-Item -LiteralPath $alvoObs -Force
+        $Removidos += $obsoleto
+    }
+}
+
+# --- 7. resumo + autodestruicao ---
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Patch $Ver aplicado:"
+foreach ($a in $Alterados) { Write-Host "  alterado : $a" }
+foreach ($a in $Incluidos) { Write-Host "  incluido : $a" }
+foreach ($a in $Removidos) { Write-Host "  removido : $a (absorvido pelo iniciar_b3.ps1 v2)" }
+Write-Host "Backup (versao antiga): patches\$Ver\anteriores\"
+Write-Host "Copias versionadas    : patches\$Ver\"
+Write-Host "Registro atualizado   : patches\registro.csv"
+Write-Host "========================================"
+Read-Host "Pressione ENTER para concluir e remover o script"
+
+Remove-Item -LiteralPath $PSCommandPath -Force
+Write-Host "Script de patch removido (autodestruicao). Ate logo."
