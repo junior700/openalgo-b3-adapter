@@ -19,6 +19,8 @@ import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+import logging as _stdlib_logging
+
 import requests
 
 BASE_URL = "https://opcoes.net.br"
@@ -56,15 +58,32 @@ def _matrix_tickers(html: str, underlying: str) -> List[str]:
     return list(dict.fromkeys(code_pattern.findall(html.upper())))
 
 
-def _fetch_matrix_html(underlying: str, side: str) -> Optional[str]:
-    """Baixa a matriz de um lado (CALL/PUT). None em falha."""
-    url = f"{BASE_URL}/matriz-opcoes-strike-x-vencimento/{side}s/{underlying}"
+def _log(msg: str) -> None:
+    """Loga no logger do core quando disponivel; fallback stdlib fora dele."""
     try:
-        response = requests.get(url, headers=_HEADERS, timeout=TIMEOUT)
-        response.raise_for_status()
-        return response.text
-    except Exception:  # noqa: BLE001 — offline e uma condicao normal aqui
-        return None
+        from utils.logging import get_logger
+
+        get_logger("opcoesnet_chain").warning(msg)
+    except Exception:
+        _stdlib_logging.getLogger("opcoesnet_chain").warning(msg)
+
+
+def _fetch_matrix_html(underlying: str, side: str) -> Optional[str]:
+    """Baixa a matriz de um lado (CALL/PUT). None em falha (logada)."""
+    url = f"{BASE_URL}/matriz-opcoes-strike-x-vencimento/{side}s/{underlying}"
+    last_err = None
+    for attempt in (1, 2):  # uma retry simples
+        try:
+            response = requests.get(url, headers=_HEADERS, timeout=TIMEOUT)
+            response.raise_for_status()
+            return response.text
+        except Exception as exc:  # noqa: BLE001 — offline e uma condicao normal
+            last_err = exc
+            _log(
+                "opcoes.net.br %s %s (tentativa %d): %s: %s"
+                % (side, underlying, attempt, type(exc).__name__, exc)
+            )
+    return None
 
 
 def fetch_option_chain(underlying: str) -> List[Dict[str, Any]]:

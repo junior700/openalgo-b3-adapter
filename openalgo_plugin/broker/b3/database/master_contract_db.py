@@ -131,6 +131,7 @@ def _opcoesnet_chain_rows(existing_symbols):
     ]
     rows = []
     for underlying in underlyings:
+        _n_antes = len(rows)
         for opt in fetch_option_chain(underlying):
             brsymbol = opt["brsymbol"]
             if not brsymbol or brsymbol in existing_symbols:
@@ -145,6 +146,26 @@ def _opcoesnet_chain_rows(existing_symbols):
                 "lotsize": opt.get("lotsize", 100),
                 "instrumenttype": "OPTSTK", "tick_size": 0.01,
             })
+        _n = len(rows) - _n_antes
+        if _n == 0:
+            try:
+                from utils.logging import get_logger
+
+                get_logger("opcoesnet_chain").warning(
+                    "B3 opcoes: 0 opcoes reais carregadas para %s — "
+                    "verifique rede/opcoes.net.br ou B3_OPTION_CHAIN" % underlying
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                from utils.logging import get_logger
+
+                get_logger("opcoesnet_chain").info(
+                    "B3 opcoes: %d opcoes reais carregadas para %s" % (_n, underlying)
+                )
+            except Exception:
+                pass
     return rows
 
 
