@@ -1,10 +1,18 @@
 # ============================================================
-# replicar_github.ps1 (v2) - Replica o projeto do GitHub NA PROPRIA
-# pasta raiz onde este script esta (SEM criar subpasta):
+# replicar_github.ps1 (v3) - USO UNICO: primeira vez, numa pasta
+# AINDA SEM o projeto (sem .git aqui). Depois deste passo, TODO
+# git (baixar novidades e enviar mudancas) passa a ser feito
+# pelo iniciar_b3.ps1 -> opcao [3] Sincronizar com GitHub. Nao
+# ha mais scripts soltos de git (publicar_github/sincronizar_github
+# foram absorvidos pelo iniciar_b3.ps1 para acabar com a bagunca
+# de varios arquivos de sincronizacao na raiz).
+#
+# Replica o projeto do GitHub NA PROPRIA pasta raiz onde este
+# script esta (SEM criar subpasta):
 #   https://github.com/junior700/openalgo-b3-adapter
 #
-# COMO USAR: coloque este arquivo (e o .bat) na PASTA RAIZ
-# generica e rode:
+# COMO USAR (so na primeira vez): coloque este arquivo (e o .bat)
+# na PASTA RAIZ generica e rode:
 #   powershell -ExecutionPolicy Bypass -File .\replicar_github.ps1
 # ou de dois cliques em replicar_github.bat
 #

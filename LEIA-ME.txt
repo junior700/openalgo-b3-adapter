@@ -2,7 +2,15 @@ INICIADOR OPENALGO + B3 (1 clique)
 =================================
 1. Extraia TODO o conteudo deste zip na RAIZ do projeto
 2. De dois cliques em: iniciar_openalgo.bat
-3. Abre http://127.0.0.1:5000 - na tela de conectividade,
-   selecione "B3 Brasil (Sandbox)" e clique em Connect Account
+   (sobe o servidor, ajusta o fuso do grafico p/ Brasil e abre
+   o navegador em http://127.0.0.1:5000)
+3. Na tela de conectividade, selecione "B3 Brasil (Sandbox)" e
+   clique em Connect Account
+
+PARA ATUALIZAR / SINCRONIZAR COM O GITHUB / APLICAR PATCHES:
+De dois cliques em iniciar_b3.bat - opcao [3] baixa e envia as
+novidades do GitHub automaticamente (nao ha mais scripts soltos
+de git na raiz), opcao [4] aplica patches.
+
 IMPORTANTE: apos atualizar, faca um hard refresh no navegador
 (Ctrl+Shift+R) para pegar o frontend novo.

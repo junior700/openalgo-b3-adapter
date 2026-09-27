@@ -57,7 +57,7 @@ function Menu-Principal {
     Write-Host ""
     Write-Host "  [1] Instalar tudo (primeira vez)"
     Write-Host "  [2] INICIAR plataforma (servidor + navegador)"
-    Write-Host "  [3] Atualizar tudo"
+    Write-Host "  [3] Sincronizar com GitHub (baixar + enviar)"
     Write-Host "  [4] Aplicar patch de correcao"
     Write-Host "  [5] Diagnostico (o que falta?)"
     Write-Host "  [6] Testar adaptador (71 testes)"
@@ -213,24 +213,70 @@ function Iniciar-Plataforma {
 }
 
 # ------------------------------------------------------------
-# [3] ATUALIZAR
+# [3] SINCRONIZAR COM GITHUB (baixar + enviar) - unico lugar para
+# isso no projeto. Absorve o que antes estava espalhado em
+# publicar_github.bat + sincronizar_github.ps1 (removidos: eram
+# 3 scripts de git soltos na raiz, causando confusao/bagunca).
+# replicar_github.ps1/.bat continua existindo APENAS para o
+# primeiro clone numa pasta vazia (antes deste script existir ali).
 # ------------------------------------------------------------
-function Atualizar-Tudo {
-    Write-Host ""
-    # --- adapter (esta raiz) ---
-    if (Test-Path (Join-Path $Raiz ".git")) {
-        Write-Host "Atualizando o adaptador (git pull)..."
-        $UrlPull = "https://github.com/junior700/openalgo-b3-adapter.git"
-        $TokenFile = Join-Path $Raiz "token_github.txt"
-        if (Test-Path $TokenFile) {
-            $tok = (Get-Content $TokenFile -First 1).Trim()
-            if ($tok) { $UrlPull = "https://$tok@github.com/junior700/openalgo-b3-adapter.git" }
-        }
-        git pull $UrlPull main
+function Garantir-Identidade-Git {
+    if (-not (git config user.name))  { git config user.name  "junior700" }
+    if (-not (git config user.email)) { git config user.email "hrdfjmaris@gmail.com" }
+}
+
+function Url-Adapter-Com-Token {
+    $limpo = "https://github.com/junior700/openalgo-b3-adapter.git"
+    $tokenFile = Join-Path $Raiz "token_github.txt"
+    if (Test-Path $tokenFile) {
+        $tok = (Get-Content $tokenFile -First 1).Trim()
+        if ($tok) { return "https://$tok@github.com/junior700/openalgo-b3-adapter.git" }
     }
-    # --- OpenAlgo ---
+    return $limpo
+}
+
+function Sincronizar-Github {
+    Write-Host ""
+    Write-Host "--- Sincronizar com GitHub ---" -ForegroundColor Cyan
+    if (-not (Test-Path (Join-Path $Raiz ".git"))) {
+        Write-Host "Esta pasta ainda nao e um clone do GitHub." -ForegroundColor Yellow
+        Write-Host "Use replicar_github.ps1 (primeira vez, pasta vazia) e rode de novo." -ForegroundColor Yellow
+        return
+    }
+    Garantir-Identidade-Git
+    $UrlRepo = Url-Adapter-Com-Token
+
+    Write-Host "[1/2] Baixando novidades do GitHub..."
+    git fetch $UrlRepo main
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Fetch falhou (rede/token). Sincronizacao cancelada." -ForegroundColor Red
+        return
+    }
+    git merge --ff-only FETCH_HEAD
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Ha mudancas locais nao commitadas que impedem avancar direto." -ForegroundColor Yellow
+        $r = Read-Host "Guardar mudancas locais num backup (git stash) e continuar? [S/N]"
+        if ($r -eq "S" -or $r -eq "s") {
+            $carimbo = Get-Date -Format "yyyy-MM-dd_HHmm"
+            git stash push --include-untracked -m "auto-backup antes do sync $carimbo"
+            git merge --ff-only FETCH_HEAD
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Novidades aplicadas. Backup guardado (veja com: git stash list)." -ForegroundColor Green
+            } else {
+                Write-Host "Ainda nao foi possivel avancar. Rode 'git status' e resolva manualmente." -ForegroundColor Red
+                return
+            }
+        } else {
+            Write-Host "Sincronizacao cancelada." -ForegroundColor Yellow
+            return
+        }
+    } else {
+        Write-Host "Novidades do GitHub aplicadas no adaptador." -ForegroundColor Green
+    }
+
+    # --- OpenAlgo (core, upstream puro - zero modificacao local) ---
     if (Test-Path (Join-Path $OpenAlgo ".git")) {
-        Write-Host "Atualizando a plataforma OpenAlgo..."
+        Write-Host "Atualizando a plataforma OpenAlgo (core)..."
         Push-Location $OpenAlgo
         git pull
         Pop-Location
@@ -241,7 +287,28 @@ function Atualizar-Tudo {
         if (Test-Path $PluginB3) { Remove-Item -Recurse -Force $PluginB3 }
         Copy-Item -Recurse (Join-Path $Raiz "openalgo_plugin\broker\b3") $PluginB3
     }
-    Write-Host "Atualizacao concluida." -ForegroundColor Green
+
+    Write-Host ""
+    $r2 = Read-Host "[2/2] Enviar suas mudancas locais para o GitHub agora? [S/N]"
+    if ($r2 -eq "S" -or $r2 -eq "s") {
+        git add -A
+        git diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+            $msg = Read-Host "Mensagem de commit"
+            if (-not $msg) { $msg = "chore: sincronizacao automatica" }
+            git commit -m $msg
+        } else {
+            Write-Host "Nada a commitar." -ForegroundColor DarkGray
+        }
+        git push $UrlRepo main --tags
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Enviado com sucesso para o GitHub." -ForegroundColor Green
+        } else {
+            Write-Host "ERRO no push. Verifique token_github.txt e a rede." -ForegroundColor Red
+        }
+    }
+    Write-Host ""
+    Write-Host "Sincronizacao concluida." -ForegroundColor Green
 }
 
 # ------------------------------------------------------------
@@ -305,7 +372,7 @@ while ($true) {
     switch ($op) {
         "1" { Instalar-Tudo; Pausa }
         "2" { Iniciar-Plataforma; Pausa }
-        "3" { Atualizar-Tudo; Pausa }
+        "3" { Sincronizar-Github; Pausa }
         "4" { Aplicar-Patch; Pausa }
         "5" { Diagnostico; Pausa }
         "6" { Testar-Adaptador; Pausa }
