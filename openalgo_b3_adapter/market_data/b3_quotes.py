@@ -1,14 +1,14 @@
-"""Provedores de cotaÃ§Ãµes da B3 (Brapi + HG Brasil).
+"""Provedores de cotações da B3 (Brapi + HG Brasil).
 
 - BrapiQuoteProvider:    https://brapi.dev (gratuito; PETR4/VALE3/ITUB4/MGLU3 sem chave)
 - HGBrasilQuoteProvider: https://hgbrasil.com (gratuito com key)
 - CompositeQuoteProvider: fallback em cadeia com cache TTL.
 
-Provedores recebem `fetch` injetÃ¡vel (httpx por padrÃ£o) -> testes offline.
+Provedores recebem `fetch` injetável (httpx por padrão) -> testes offline.
 
-Nota honesta: cotaÃ§Ã£o intraday da Brapi Ã© o Ãºltimo preÃ§o consolidado disponÃ­vel
-(atraso depende do plano), NÃƒO tick-a-tick. Tempo real real exige B3 WebFeed
-(licenÃ§a paga) â€” veja docs/BROKERS-BR.md.
+Nota honesta: cotação intraday da Brapi é o último preço consolidado disponível
+(atraso depende do plano), NÃO tick-a-tick. Tempo real real exige B3 WebFeed
+(licença paga) — veja docs/BROKERS-BR.md.
 """
 from __future__ import annotations
 
@@ -40,17 +40,83 @@ class Quote:
     tick_size: Optional[float] = None
     source: str = ""
     fetched_at: float = field(default_factory=time.time)
+    # Epoch (segundos) do ULTIMO NEGOCIO segundo o provedor. Usado para
+    # carimbar o candle em formacao com o tempo real do negocio, evitando
+    # que o terminal crie um candle 'de hoje' com preco de sexta em dias
+    # sem pregao (fallback do polling com o relogio do navegador).
+    market_time: Optional[float] = None
+
+
+def _norm_epoch(value) -> Optional[float]:
+    """Normaliza epoch em segundos; aceita segundos ou milissegundos."""
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return None
+    if ts <= 0:
+        return None
+    if ts > 1e12:  # veio em milissegundos
+        ts /= 1000.0
+    return ts
+
+
+_B3_TZ = None
+
+
+def _b3_tz():
+    """Fuso de Brasilia. Sem DST desde 2019, entao -03:00 fixo serve como
+    fallback quando o tzdata nao esta disponivel (Windows)."""
+    global _B3_TZ
+    if _B3_TZ is None:
+        try:
+            from zoneinfo import ZoneInfo
+            _B3_TZ = ZoneInfo("America/Sao_Paulo")
+        except Exception:
+            import datetime as _dt
+            _B3_TZ = _dt.timezone(_dt.timedelta(hours=-3))
+    return _B3_TZ
+
+
+def _b3_session_stamp(now_epoch=None):
+    """Epoch do fechamento do ultimo pregao util (16:50 BRT) quando o mercado
+    esta FECHADO; None quando esta aberto (seg-sex, 10:00-16:59 BRT).
+
+    Usado para carimbar o tick do polling com o tempo real do ultimo negocio:
+    sem isso o terminal carimba com o relogio do navegador e cria um candle
+    'de hoje' com o preco de sexta em dias sem pregao (candle fantasma).
+    """
+    import datetime as _dt
+    tz = _b3_tz()
+    now = _dt.datetime.fromtimestamp(now_epoch if now_epoch is not None else time.time(), tz)
+    if now.weekday() < 5 and _dt.time(10, 0) <= now.time() < _dt.time(17, 0):
+        return None  # pregao aberto: provedor/nowSec mandam
+    d = now.date()
+    if not (now.weekday() < 5 and now.time() >= _dt.time(17, 0)):
+        d -= _dt.timedelta(days=1)
+        while d.weekday() >= 5:
+            d -= _dt.timedelta(days=1)
+    return _dt.datetime.combine(d, _dt.time(16, 50), tzinfo=tz).timestamp()
 
 
 def to_openalgo_quote(q: Quote) -> Dict[str, Any]:
     """Formato padronizado esperado pelo core do OpenAlgo (BrokerData.get_quotes)."""
-    return {
+    out = {
         "bid": float(q.bid), "ask": float(q.ask), "open": float(q.open),
         "high": float(q.high), "low": float(q.low), "ltp": float(q.ltp),
         "prev_close": float(q.prev_close), "volume": int(q.volume),
         "oi": int(q.oi),
         "tick_size": q.tick_size if q.tick_size is not None else 0.01,
     }
+    # Epoch do ultimo negocio: o terminal em queda de WebSocket usa isso
+    # para carimbar o candle em formacao (injecao v022 no bundle). Com o
+    # mercado fechado, carimba o fechamento do ultimo pregao util em vez do
+    # 'agora' do navegador, evitando o candle fantasma em dias sem pregao.
+    stamp = _b3_session_stamp()
+    if stamp is None:
+        stamp = q.market_time
+    if stamp:
+        out["timeSec"] = int(stamp)
+    return out
 
 
 def _default_fetch() -> Fetch:
@@ -106,7 +172,22 @@ class BrapiQuoteProvider(QuoteProvider):
             ask=float(data.get("regularMarketAskPrice", 0) or 0),
             volume=int(data.get("regularMarketVolume", 0) or 0),
             tick_size=inst.tick_size, source=self.name,
+            market_time=_norm_epoch(data.get("regularMarketTime") or data.get("updatedAt")),
         )
+
+
+def _parse_hg_time(value) -> Optional[float]:
+    """Converte data/hora da HG Brasil ('2026-09-26 16:30:01',
+    '26/09/2026 16:30:01', '26/09/2026 16:30') em epoch."""
+    if not value or not isinstance(value, str):
+        return None
+    import datetime as _dt
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
+        try:
+            return _dt.datetime.strptime(value.strip(), fmt).timestamp()
+        except ValueError:
+            continue
+    return None
 
 
 class HGBrasilQuoteProvider(QuoteProvider):
@@ -134,11 +215,12 @@ class HGBrasilQuoteProvider(QuoteProvider):
             ask=float(data.get("ask", 0) or 0),
             volume=int(float(data.get("volume", 0) or 0)),
             tick_size=inst.tick_size, source=self.name,
+            market_time=_parse_hg_time(data.get("updated_at") or data.get("updatedAt")),
         )
 
 
 class CompositeQuoteProvider(QuoteProvider):
-    """Tenta provedores em ordem; primeiro que responde vence. Cache TTL por sÃ­mbolo."""
+    """Tenta provedores em ordem; primeiro que responde vence. Cache TTL por símbolo."""
 
     def __init__(self, providers: Optional[List[QuoteProvider]] = None,
                  fetch: Optional[Fetch] = None, ttl: Optional[float] = None):
@@ -159,7 +241,7 @@ class CompositeQuoteProvider(QuoteProvider):
                 if q.ltp > 0:
                     self._cache[symbol] = q
                     return q
-                errors.append(f"{provider.name}: preÃ§o zerado")
+                errors.append(f"{provider.name}: preço zerado")
             except Exception as exc:  # noqa: BLE001 - fallback intencional
                 errors.append(f"{provider.name}: {exc}")
-        raise ValueError(f"Nenhum provedor retornou cotaÃ§Ã£o para '{symbol}': {'; '.join(errors)}")
+        raise ValueError(f"Nenhum provedor retornou cotação para '{symbol}': {'; '.join(errors)}")

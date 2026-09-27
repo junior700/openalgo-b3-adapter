@@ -1,17 +1,17 @@
 """Master contract B3: popula a tabela symtoken do OpenAlgo.
 
 Fontes:
-  1. Semente offline (openalgo_b3_adapter.market_data.b3_seed) â€” sempre disponivel,
+  1. Semente offline (openalgo_b3_adapter.market_data.b3_seed) — sempre disponivel,
      cobre os papeis/futuros mais liquidos.
   2. Brapi (opcional): lista completa de tickers quando BRAPI_API_KEY esta
      definida (best-effort; falha silenciosa cai na semente).
 
 Simbolos no espaco OpenAlgo:
-  - a vista/futuros/indices: idÃªnticos ao cÃ³digo B3 (PETR4, WINJ26, IBOV)
+  - a vista/futuros/indices: idênticos ao código B3 (PETR4, WINJ26, IBOV)
   - opcoes: notacao estruturada (BASE-YYYY-MM-DD-STRIKE-C/P) com brsymbol
-    = cÃ³digo oficial da B3 (ex.: PETRA331)
+    = código oficial da B3 (ex.: PETRA331)
 Exchanges gravadas: codigos genericos aceitos pelo core (NSE/NFO/MCX/NSE_INDEX)
-com brexchange B3/B3OPT/B3FUT â€” veja docs/INSTALL.md (modo zero-mod).
+com brexchange B3/B3OPT/B3FUT — veja docs/INSTALL.md (modo zero-mod).
 """
 import os
 
@@ -93,7 +93,7 @@ def _seed_rows():
             "token": symbol, "expiry": "", "strike": 0.0,
             "lotsize": lot, "instrumenttype": kind, "tick_size": tick,
         })
-    # opcoes ilustrativas (produÃ§Ã£o: download oficial da sÃ©rie vigente)
+    # opcoes ilustrativas (produção: download oficial da série vigente)
     for oa_symbol, br_symbol, base, lot, tick in SEED_OPTION_EXAMPLES:
         parts = oa_symbol.split("-")
         rows.append({
@@ -117,7 +117,7 @@ def _seed_rows():
 def _opcoesnet_chain_rows(existing_symbols):
     """Opcoes reais (serie vigente) via matrizes publicas do opcoes.net.br.
 
-    Falha de rede degrada para lista vazia â€” as sementes ilustrativas e a
+    Falha de rede degrada para lista vazia — as sementes ilustrativas e a
     carga Brapi permanecem. Subjacentes configuraveis:
         B3_OPTION_UNDERLYINGS="PETR4,VALE3"  (padrao)
         B3_OPTION_CHAIN=0 desativa a carga.
@@ -149,7 +149,7 @@ def _opcoesnet_chain_rows(existing_symbols):
 
 
 def _brapi_ticker_rows():
-    """Best-effort: lista de tickers da Brapi quando hÃ¡ chave."""
+    """Best-effort: lista de tickers da Brapi quando há chave."""
     import httpx
 
     from openalgo_b3_adapter.config.b3_config import get_config

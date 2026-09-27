@@ -6,7 +6,7 @@ sandbox). Gateways reais dependem de onboarding com a corretora (veja
 brokers/nuinvest.py e brokers/btg.py para stubs documentados).
 
 SandboxGateway: simulador in-memory deterministico, com ciclo de vida de
-ordem (new/open/complete/cancelled/rejected), book, posicoes e funds â€”
+ordem (new/open/complete/cancelled/rejected), book, posicoes e funds —
 para desenvolvimento e testes, no espirito do plugin dhan_sandbox do
 OpenAlgo.
 """
@@ -108,7 +108,7 @@ def map_openalgo_order(
 
     `data` e o dict validado pelo schema do core (apikey, strategy, symbol,
     exchange, action, quantity, pricetype, price, trigger_price, product...).
-    `br_symbol` e o cÃ³digo B3 resolvido pelo master contract (plugin).
+    `br_symbol` e o código B3 resolvido pelo master contract (plugin).
     """
     pricetype = (data.get("pricetype") or "MARKET").strip().upper()
     side_map = {"BUY": "BUY", "SELL": "SELL"}
@@ -166,7 +166,7 @@ class SandboxGateway(B3OrderGateway):
     - `auto_tick_seconds > 0` (ou env B3_SANDBOX_AUTO_TICK=<segundos>):
       motor de ticks em background que busca cotacoes periodicamente e
       executa sozinho: LIMIT (compra preco<=limite, venda preco>=limite)
-      e SL/SL-M (disparo no gatilho) â€” comportamento de corretora,
+      e SL/SL-M (disparo no gatilho) — comportamento de corretora,
       sem dinheiro real.
     """
 
@@ -248,7 +248,7 @@ class SandboxGateway(B3OrderGateway):
                     except (ValueError, IndexError):
                         pass
             self._ids = itertools.count(max_id + 1)
-        except Exception:  # noqa: BLE001 â€” estado corrompido: comeca limpo
+        except Exception:  # noqa: BLE001 — estado corrompido: comeca limpo
             self._orders, self._trades = {}, {}
             self._cash, self._positions, self._quotes = {}, {}, {}
 
@@ -293,7 +293,7 @@ class SandboxGateway(B3OrderGateway):
             if q and getattr(q, "ltp", None):
                 self._quotes[br_symbol] = float(q.ltp)
                 return float(q.ltp)
-        except Exception:  # noqa: BLE001 â€” sem rede: usa ultimo preco conhecido
+        except Exception:  # noqa: BLE001 — sem rede: usa ultimo preco conhecido
             pass
         return self._quotes.get(br_symbol)
 
@@ -527,7 +527,7 @@ class SandboxGateway(B3OrderGateway):
         while not self._tick_stop.wait(self._auto_tick_seconds):
             try:
                 self.tick()
-            except Exception:  # noqa: BLE001 â€” thread nunca derruba o processo
+            except Exception:  # noqa: BLE001 — thread nunca derruba o processo
                 pass
 
     def stop_tick(self) -> None:

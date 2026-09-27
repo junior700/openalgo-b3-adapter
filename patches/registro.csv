@@ -1,12 +1,1 @@
 versao;data-hora;arquivos;descricao
-v002_2026-09-26_1923;2026-09-26 19:23;openalgo_b3_adapter\order_execution\b3_orders.py|tests\conftest.py|openalgo_plugin\broker\b3\database\master_contract_db.py;singleton gateway + persistencia sandbox + schema master contract
-v003_2026-09-26_1938;2026-09-26 19:38;openalgo_b3_adapter\market_data\opcoesnet_chain.py|tests\test_opcoesnet_chain.py|openalgo_plugin\broker\b3\database\master_contract_db.py;serie real de opcoes B3 via opcoes.net.br no contrato mestre
-v005_2026-09-26_2021;2026-09-26 20:21;sincronizar_github.ps1|iniciar_openalgo.ps1;auto-bypass: scripts se reabrem com ExecutionPolicy Bypass + -NoExit (janela nao fecha)
-v006_2026-09-26_2138;2026-09-26 21:38;iniciar_openalgo.ps1;iniciador auto-instala o core oficial do OpenAlgo (git clone) quando ausente
-v007_2026-09-26_2144;2026-09-26 21:44;iniciar_openalgo.ps1;corrigir URL do clone: repo oficial e marketcalls/openalgo
-v009_2026-09-26_2228;2026-09-26 22:28;iniciar_openalgo.ps1;corrigir unroll de pipeline: lista de candidates agora sempre array (bug do [0] pegando o caractere C)
-v010_2026-09-26_2232;2026-09-26 22:32;iniciar_openalgo.ps1;reescrita do bloco .env: linha a linha sem regex, valida .env existente e regenera se faltar b3
-v013_2026-09-26_2315;2026-09-26 23:15;openalgo_plugin\broker\b3\api\auth_api.py;sandbox B3: auto-autenticar sem credencial no Connect Account da GUI (loop resolvido)
-v014_2026-09-27_0014;2026-09-27 00:14;openalgo_plugin\broker\b3\api\data.py|openalgo_b3_adapter\market_data\b3_quotes.py;correcao: historico do grafico (bug de case sensitivity no intervalo D) + cotacao/historico do mercado fracionario (sufixo F) usam ticker base na Brapi/HG Brasil
-v015_2026-09-27_0029;2026-09-27 00:29;openalgo_plugin\broker\b3\streaming\__init__.py|openalgo_plugin\broker\b3\streaming\b3_adapter.py|openalgo_plugin\broker\b3\api\data.py;adapter de streaming B3 no-op (elimina ModuleNotFoundError/Unsupported broker do websocket_proxy) + timeframe_map no BrokerData (corrige intervals do grafico)
-v016_2026-09-27_0107;2026-09-27 01:07;openalgo_plugin\broker\b3\api\data.py;correcao: grafico com erro 'unparseable IST time string' - timestamp do historico devolvido como datetime (serializado pelo Flask em RFC-1123) em vez de epoch inteiro, que e o formato esperado pelo openalgo-charts

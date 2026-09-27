@@ -1,4 +1,76 @@
 # ============================================================
+# patch.ps1 - aplicador automatico de correcoes
+# Projeto: openalgo-b3-adapter
+# Versao:  v012_2026-09-26_2253  |  Arquivos: 1
+# Descricao: iniciar: injetar B3 no dropdown do frontend (BrokerSelect) + remover gz pre-comprimido
+#
+# COMO USAR (na raiz da instalacao replicada):
+#   powershell -ExecutionPolicy Bypass -File .\patch_v012_2026-09-26_2253.ps1
+#
+# O QUE ELE FAZ (nesta ordem):
+#   0. recusa re-aplicacao (patches\registro.csv) e pede confirmacao
+#   1. cria a pasta patches\v012_2026-09-26_2253\
+#   2. backup dos arquivos ATUAIS em v012_2026-09-26_2253\anteriores\
+#      (arquivo novo = inclusao, sem backup)
+#   3. grava os arquivos corrigidos nos lugares devidos
+#      (UTF-8 sem BOM; cria subpastas se faltar)
+#   4. guarda copia versionada dos novos em v012_2026-09-26_2253\
+#   5. guarda copia versionada DE SI MESMO em v012_2026-09-26_2253\
+#   6. anexa uma linha no patches\registro.csv
+#   7. mostra o resumo, espera ENTER e SE AUTODESTRUI
+#
+# RASTREIO: patches\registro.csv guarda versao, data, arquivos e
+# resultado. ROLLBACK MANUAL: copie de v012_2026-09-26_2253\anteriores\.
+#
+# REGRAS DO PROJETO: pausa antes de qualquer saida, confirmacao
+# antes de tocar em qualquer arquivo, token nunca gravado.
+# ============================================================
+
+$ErrorActionPreference = "Stop"
+$Raiz = $PSScriptRoot
+if (-not $Raiz) { $Raiz = (Get-Location).Path }
+
+$Ver  = "v012_2026-09-26_2253"
+$Desc = "iniciar: injetar B3 no dropdown do frontend (BrokerSelect) + remover gz pre-comprimido"
+
+Write-Host ""
+Write-Host "=== PATCH AUTOMATICO - openalgo-b3-adapter ===" -ForegroundColor Cyan
+Write-Host "Versao: $Ver"
+Write-Host "Descricao: $Desc"
+Write-Host "Raiz do projeto: $Raiz"
+Write-Host ""
+
+# --- 0. recusa re-aplicacao ---
+$Registro = Join-Path $Raiz "patches\registro.csv"
+if (Test-Path $Registro) {
+    $ja = Get-Content $Registro -ErrorAction SilentlyContinue |
+          Where-Object { $_ -match "^$Ver;" }
+    if ($ja) {
+        Write-Host "Patch $Ver JA aplicado (registro.csv). Nada a fazer." -ForegroundColor Yellow
+        Read-Host "Pressione ENTER para sair"
+        exit 0
+    }
+}
+
+# --- confirmacao antes de tocar em qualquer arquivo ---
+$r = Read-Host "Aplicar este patch? [S/N]"
+if ($r -ne "S" -and $r -ne "s") {
+    Write-Host "Cancelado. Nenhum arquivo foi tocado."
+    Read-Host "Pressione ENTER para sair"
+    exit 0
+}
+
+# --- pasta da versao ---
+$DirVer = Join-Path $Raiz "patches\$Ver"
+$DirAnt = Join-Path $DirVer "anteriores"
+New-Item -ItemType Directory -Force -Path $DirVer | Out-Null
+New-Item -ItemType Directory -Force -Path $DirAnt | Out-Null
+
+# --- arquivos embutidos: destino relativo -> conteudo novo ---
+$Arquivos = @{
+
+    "iniciar_openalgo.ps1" = @'
+# ============================================================
 #  iniciar_openalgo.ps1 - iniciador automatico do OpenAlgo + plugin B3
 #  Uso: clique direito -> "Executar com PowerShell", ou no terminal:
 #       powershell -ExecutionPolicy Bypass -File .\iniciar_openalgo.ps1
@@ -73,87 +145,6 @@ if ($bsFile -and -not (Select-String -Path $bsFile.FullName -Pattern 'id:`b3`' -
     }
 }
 
-# --- [2c] espelha indicadores customizados do grafico (drop-in) ---
-$indSrc = Join-Path $PSScriptRoot "openalgo_plugin\strategies\indicators"
-$indDst = Join-Path $OA "strategies\indicators"
-if (Test-Path $indSrc) {
-    if (-not (Test-Path $indDst)) { New-Item -ItemType Directory -Path $indDst -Force | Out-Null }
-    Copy-Item -Path "$indSrc\*" -Destination $indDst -Force
-    Write-Host "[2c] Indicadores customizados espelhados para o core (strategies\indicators)."
-} else {
-    Write-Host "[2c] Sem indicadores customizados para espelhar." -ForegroundColor DarkGray
-}
-
-# --- [2d] fuso horario do grafico: America/Sao_Paulo em vez do padrao indiano (idempotente) ---
-# A biblioteca openalgo-charts usa Asia/Kolkata como padrao; o Brasil merece
-# o fuso local. Procura o bundle que cria o grafico (opcao priceAxisWidth:78)
-# em QUALQUER arquivo .js do dist, aceitando formatacao com ou sem espacos,
-# e injeta a opcao `timezone` com fallback America/Sao_Paulo. A escolha
-# manual nas configuracoes do grafico continua valendo (sobrescreve e persiste).
-$fusoFeito = $false
-$cand2d = Get-ChildItem -Path $distAssets -Filter "*.js" -ErrorAction SilentlyContinue |
-    Where-Object { Select-String -Path $_.FullName -Pattern 'priceAxisWidth\s*:\s*78\s*,' -Quiet } |
-    Sort-Object { $_.Name -notmatch '^(Trading|trading)' } | Select-Object -First 1
-if ($cand2d) {
-    $c2d = Get-Content $cand2d.FullName -Raw
-    if ($c2d -match 'priceAxisWidth\s*:\s*78\s*,\s*timezone') {
-        Write-Host "[2d] Fuso do grafico ja injetado ($($cand2d.Name))." -ForegroundColor DarkGray
-        $fusoFeito = $true
-    } else {
-        Write-Host "[2d] Injetando fuso do navegador no bundle $($cand2d.Name)..."
-        $re2d = [regex]'(priceAxisWidth\s*:\s*78)\s*,'
-        $novo2d = $re2d.Replace($c2d, '${1},timezone:(Intl.DateTimeFormat().resolvedOptions().timeZone||`America/Sao_Paulo`),', 1)
-        if ($novo2d -ne $c2d) {
-            [System.IO.File]::WriteAllText($cand2d.FullName, $novo2d, (New-Object System.Text.UTF8Encoding($false)))
-            Get-ChildItem -Path $distAssets -Filter ($cand2d.Name + ".*") -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -ne $cand2d.Name } | Remove-Item -Force
-            Write-Host "[2d] Grafico abrira no fuso do navegador (padrao America/Sao_Paulo)." -ForegroundColor Green
-            $fusoFeito = $true
-        } else {
-            Write-Host "[2d] AVISO: padrao encontrado mas substituicao falhou em $($cand2d.Name)." -ForegroundColor Yellow
-        }
-    }
-} else {
-    Write-Host "[2d] AVISO: nenhum bundle do grafico encontrado em frontend\dist\assets." -ForegroundColor Yellow
-    Write-Host ("      Arquivos .js: " + ((Get-ChildItem -Path $distAssets -Filter "*.js" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ", "))
-}
-if (-not $fusoFeito) {
-    Write-Host "[2d] O grafico seguira no fuso indiano ate esta secao funcionar." -ForegroundColor Yellow
-}
-
-# --- [2e] candle fantasma: tick do polling usa o tempo real do negocio (idempotente) ---
-# Com o WebSocket caido, o terminal recorre ao polling de cotacao (a cada 4s) e
-# carimba cada tick com o RELOGIO DO NAVEGADOR. Em dia sem pregao isso fabrica
-# um candle "de hoje" com o preco de sexta (o candle duplicado). O adapter B3
-# agora envia o epoch do ultimo negocio (timeSec) na cotacao; esta injecao faz
-# o terminal preferir esse tempo em vez do relogio local.
-$tickFeito = $false
-$cand2e = Get-ChildItem -Path $distAssets -Filter "*.js" -ErrorAction SilentlyContinue |
-    Where-Object { Select-String -Path $_.FullName -Pattern 'ltp:[A-Za-z_$][\w$]*\.ltp,timeSec:' -Quiet } |
-    Select-Object -First 1
-if ($cand2e) {
-    $c2e = Get-Content $cand2e.FullName -Raw
-    if ($c2e -match 'ltp:[A-Za-z_$][\w$]*\.ltp,timeSec:\(') {
-        Write-Host "[2e] Carimbo de tempo do tick ja injetado ($($cand2e.Name))." -ForegroundColor DarkGray
-        $tickFeito = $true
-    } else {
-        Write-Host "[2e] Injetando preferencia pelo tempo real do negocio em $($cand2e.Name)..."
-        $re2e = [regex]'(ltp:([A-Za-z_$][\w$]*)\.ltp,timeSec:)([A-Za-z_$][\w$]*)\(\)'
-        $novo2e = $re2e.Replace($c2e, '${1}(${2}.timeSec||${3}())', 1)
-        if ($novo2e -ne $c2e) {
-            [System.IO.File]::WriteAllText($cand2e.FullName, $novo2e, (New-Object System.Text.UTF8Encoding($false)))
-            Get-ChildItem -Path $distAssets -Filter ($cand2e.Name + ".*") -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -ne $cand2e.Name } | Remove-Item -Force
-            Write-Host "[2e] Tick do polling carimba o tempo real do negocio (fim do candle fantasma)." -ForegroundColor Green
-            $tickFeito = $true
-        } else {
-            Write-Host "[2e] AVISO: padrao do tick encontrado mas substituicao falhou." -ForegroundColor Yellow
-        }
-    }
-} else {
-    Write-Host "[2e] AVISO: bundle do tick nao encontrado em frontend\dist\assets." -ForegroundColor Yellow
-}
-
 # --- [3/5] ambiente virtual ---
 $py = Join-Path $OA ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
@@ -219,31 +210,8 @@ if ($precisa -and (Test-Path $envSample)) {
     [System.IO.File]::WriteAllLines($envFile, $final, (New-Object System.Text.ASCIIEncoding))
 }
 
-# --- [4b] porta 8765 precisa estar livre (WebSocket do SDK) ---
-$ocup8765 = netstat -ano | Select-String ":8765\s+.*LISTENING"
-if ($ocup8765) {
-    $procIds = $ocup8765 | ForEach-Object { ($_.Line -split '\s+')[-1] } | Sort-Object -Unique
-    Write-Host "[4b] ATENCAO: porta 8765 ja esta ocupada (outra janela do OpenAlgo aberta?)." -ForegroundColor Yellow
-    foreach ($procId in $procIds) {
-        try { $pr = Get-Process -Id $procId -ErrorAction Stop; Write-Host ("      PID {0} = {1}" -f $procId, $pr.ProcessName) } catch {}
-    }
-    $r = Read-Host "      Encerrar esse(s) processo(s) agora? [S/N]"
-    if ($r -eq "S" -or $r -eq "s") {
-        foreach ($procId in $procIds) { taskkill /PID $procId /F 2>$null | Out-Null }
-        Start-Sleep -Seconds 2
-        Write-Host "[4b] Processos encerrados; porta liberada." -ForegroundColor Green
-    } else {
-        Write-Host "[4b] Processos mantidos. Se a porta ainda estiver ocupada, o WebSocket nao sobe." -ForegroundColor DarkGray
-    }
-}
-
 # --- [5/5] abre o navegador apos o servidor subir e sobe o servidor ---
 Start-Process powershell -ArgumentList "-NoProfile -Command `"Start-Sleep -Seconds 18; Start-Process 'http://127.0.0.1:5000'`""
-# --- [4c] sonda pos-start: o WebSocket precisa subir na porta 8765 ---
-# Se a porta nao abrir, o terminal cai no polling de cotacao e volta o risco
-# do candle fantasma; avisa em janela propria se isso acontecer.
-Start-Process powershell -ArgumentList "-NoProfile -Command `"Start-Sleep -Seconds 25; if (-not (netstat -ano | Select-String ':8765\s+.*LISTENING')) { Write-Host 'ATENCAO: o WebSocket (porta 8765) NAO subiu.' -ForegroundColor Red; Write-Host 'Feche e rode iniciar_openalgo.ps1 de novo; se persistir, encerre o processo da porta 8765.' -ForegroundColor Yellow; Read-Host 'Fechar' }`""
-
 Write-Host "[5/5] Subindo o OpenAlgo... o navegador abre sozinho em instantes." -ForegroundColor Green
 Write-Host ""
 Write-Host "Login da GUI: admin / OpenAlgo@B3Demo2026"
@@ -256,3 +224,53 @@ try { & $py app.py } finally {
     Write-Host "Servidor encerrado."
     Read-Host "Enter para sair"
 }
+'@
+
+}
+
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$Alterados = @()
+$Incluidos = @()
+
+foreach ($dest in $Arquivos.Keys) {
+    $alvo = Join-Path $Raiz $dest
+    $dirAlvo = Split-Path $alvo -Parent
+    if (-not (Test-Path $dirAlvo)) {
+        New-Item -ItemType Directory -Force -Path $dirAlvo | Out-Null
+    }
+    if (Test-Path $alvo) {
+        # 2. backup da versao ATUAL (antiga) antes de sobrescrever
+        $bk = Join-Path $DirAnt ($dest -replace "[\\/]", "__")
+        Copy-Item -LiteralPath $alvo -Destination $bk -Force
+        $Alterados += $dest
+    } else {
+        $Incluidos += $dest
+    }
+    # 3. grava o conteudo corrigido (UTF-8 sem BOM)
+    [System.IO.File]::WriteAllText($alvo, $Arquivos[$dest], $Utf8NoBom)
+    # 4. copia versionada do arquivo novo
+    $cp = Join-Path $DirVer ($dest -replace "[\\/]", "__")
+    Copy-Item -LiteralPath $alvo -Destination $cp -Force
+}
+
+# --- 5. copia versionada de si mesmo ---
+Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $DirVer "patch_v012_2026-09-26_2253.ps1") -Force
+
+# --- 6. registro ---
+$linha = "$Ver;2026-09-26 22:53;iniciar_openalgo.ps1;iniciar: injetar B3 no dropdown do frontend (BrokerSelect) + remover gz pre-comprimido`n"
+[System.IO.File]::AppendAllText($Registro, $linha, $Utf8NoBom)
+
+# --- 7. resumo + autodestruicao ---
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Patch $Ver aplicado:"
+foreach ($a in $Alterados) { Write-Host "  alterado : $a" }
+foreach ($a in $Incluidos) { Write-Host "  incluido : $a" }
+Write-Host "Backup (versao antiga): patches\$Ver\anteriores\"
+Write-Host "Copias versionadas    : patches\$Ver\"
+Write-Host "Registro atualizado   : patches\registro.csv"
+Write-Host "========================================"
+Read-Host "Pressione ENTER para concluir e remover o script"
+
+Remove-Item -LiteralPath $PSCommandPath -Force
+Write-Host "Script de patch removido (autodestruicao). Ate logo."

@@ -1,3 +1,75 @@
+# ============================================================
+# patch.ps1 - aplicador automatico de correcoes
+# Projeto: openalgo-b3-adapter
+# Versao:  v018_2026-09-27_1321  |  Arquivos: 1
+# Descricao: Periodicidade do grafico restaurada: intraday real (1m/2m/5m/15m/30m/1h) via Yahoo Finance, diario via Brapi; timeframe_map expandido e cache de 60s
+#
+# COMO USAR (na raiz da instalacao replicada):
+#   powershell -ExecutionPolicy Bypass -File .\patch_v018_2026-09-27_1321.ps1
+#
+# O QUE ELE FAZ (nesta ordem):
+#   0. recusa re-aplicacao (patches\registro.csv) e pede confirmacao
+#   1. cria a pasta patches\v018_2026-09-27_1321\
+#   2. backup dos arquivos ATUAIS em v018_2026-09-27_1321\anteriores\
+#      (arquivo novo = inclusao, sem backup)
+#   3. grava os arquivos corrigidos nos lugares devidos
+#      (UTF-8 sem BOM; cria subpastas se faltar)
+#   4. guarda copia versionada dos novos em v018_2026-09-27_1321\
+#   5. guarda copia versionada DE SI MESMO em v018_2026-09-27_1321\
+#   6. anexa uma linha no patches\registro.csv
+#   7. mostra o resumo, espera ENTER e SE AUTODESTRUI
+#
+# RASTREIO: patches\registro.csv guarda versao, data, arquivos e
+# resultado. ROLLBACK MANUAL: copie de v018_2026-09-27_1321\anteriores\.
+#
+# REGRAS DO PROJETO: pausa antes de qualquer saida, confirmacao
+# antes de tocar em qualquer arquivo, token nunca gravado.
+# ============================================================
+
+$ErrorActionPreference = "Stop"
+$Raiz = $PSScriptRoot
+if (-not $Raiz) { $Raiz = (Get-Location).Path }
+
+$Ver  = "v018_2026-09-27_1321"
+$Desc = "Periodicidade do grafico restaurada: intraday real (1m/2m/5m/15m/30m/1h) via Yahoo Finance, diario via Brapi; timeframe_map expandido e cache de 60s"
+
+Write-Host ""
+Write-Host "=== PATCH AUTOMATICO - openalgo-b3-adapter ===" -ForegroundColor Cyan
+Write-Host "Versao: $Ver"
+Write-Host "Descricao: $Desc"
+Write-Host "Raiz do projeto: $Raiz"
+Write-Host ""
+
+# --- 0. recusa re-aplicacao ---
+$Registro = Join-Path $Raiz "patches\registro.csv"
+if (Test-Path $Registro) {
+    $ja = Get-Content $Registro -ErrorAction SilentlyContinue |
+          Where-Object { $_ -match "^$Ver;" }
+    if ($ja) {
+        Write-Host "Patch $Ver JA aplicado (registro.csv). Nada a fazer." -ForegroundColor Yellow
+        Read-Host "Pressione ENTER para sair"
+        exit 0
+    }
+}
+
+# --- confirmacao antes de tocar em qualquer arquivo ---
+$r = Read-Host "Aplicar este patch? [S/N]"
+if ($r -ne "S" -and $r -ne "s") {
+    Write-Host "Cancelado. Nenhum arquivo foi tocado."
+    Read-Host "Pressione ENTER para sair"
+    exit 0
+}
+
+# --- pasta da versao ---
+$DirVer = Join-Path $Raiz "patches\$Ver"
+$DirAnt = Join-Path $DirVer "anteriores"
+New-Item -ItemType Directory -Force -Path $DirVer | Out-Null
+New-Item -ItemType Directory -Force -Path $DirAnt | Out-Null
+
+# --- arquivos embutidos: destino relativo -> conteudo novo ---
+$Arquivos = @{
+
+    "openalgo_plugin\broker\b3\api\data.py" = @'
 """Dados de mercado do plugin B3 (contrato: broker.<n>.api.data).
 
 BrokerData e a classe que o core instancia com o auth token; metodos:
@@ -10,7 +82,6 @@ Fontes:
     - Diario 'D': Brapi/HG Brasil (plano gratuito, historico diario).
     - Intraday (1m/5m/15m/30m/1h): Yahoo Finance (dados reais da B3, sem
       chave; atraso de ~15 min em alguns papeis).
-    - Semanal 'W' / mensal 'M': Yahoo Finance (1wk/1mo, ~20 anos).
     - Book: simulado para dev. Tempo real/licenca B3: docs/BROKERS-BR.md.
 """
 import datetime as _dt
@@ -36,7 +107,7 @@ from utils.logging import get_logger
 logger = get_logger(__name__)
 
 # diario via Brapi; intraday via Yahoo Finance (dados reais da B3)
-_SUPPORTED_INTERVALS = {"d", "1d", "w", "m", "1m", "2m", "5m", "15m", "30m", "1h", "60m"}
+_SUPPORTED_INTERVALS = {"d", "1d", "1m", "2m", "5m", "15m", "30m", "1h", "60m"}
 
 # intervalos intraday que o Yahoo atende e o janela maxima de cada um
 # (limites da API publica do Yahoo; pedir mais antigo que isso e recusado)
@@ -48,10 +119,6 @@ _YAHOO_WINDOWS = {
     "30m": ("30m", 60),
     "60m": ("60m", 730),  # ~2 anos (Yahoo trata 60m == 1h)
     "1h": ("60m", 730),
-    # Semanal/mensal: o Yahoo aceita janelas longas sem limite de intervalo
-    # fino; ~20 anos cobre o lookback maximo que o grafico pede (10 anos).
-    "w": ("1wk", 7300),
-    "m": ("1mo", 7300),
 }
 
 _HIST_CACHE: dict = {}
@@ -84,7 +151,6 @@ class BrokerData:
         self.timeframe_map = {
             "1m": "1m", "2m": "2m", "5m": "5m", "15m": "15m",
             "30m": "30m", "1h": "1h", "D": "D",
-            "W": "W", "M": "M",
         }
 
     # ---------------------------------------------------------------- quotes
@@ -124,8 +190,8 @@ class BrokerData:
         if norm not in _SUPPORTED_INTERVALS:
             raise Exception(
                 f"Intervalo '{interval}' ainda nao suportado no adapter B3. "
-                "Suportado: 'D' (diario, Brapi), intraday 1m/2m/5m/15m/30m/1h "
-                "e semanal/mensal W/M (Yahoo Finance, dados reais da B3)."
+                "Suportado: 'D' (diario, Brapi) e intraday 1m/2m/5m/15m/30m/1h "
+                "(Yahoo Finance, dados reais da B3)."
             )
         br_symbol = get_br_symbol(symbol, exchange) or symbol
         # Mercado fracionario (sufixo "F") compartilha o mesmo historico do
@@ -239,3 +305,53 @@ class BrokerData:
                 "oi": 0,
             })
         return pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume", "oi"])
+'@
+
+}
+
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$Alterados = @()
+$Incluidos = @()
+
+foreach ($dest in $Arquivos.Keys) {
+    $alvo = Join-Path $Raiz $dest
+    $dirAlvo = Split-Path $alvo -Parent
+    if (-not (Test-Path $dirAlvo)) {
+        New-Item -ItemType Directory -Force -Path $dirAlvo | Out-Null
+    }
+    if (Test-Path $alvo) {
+        # 2. backup da versao ATUAL (antiga) antes de sobrescrever
+        $bk = Join-Path $DirAnt ($dest -replace "[\\/]", "__")
+        Copy-Item -LiteralPath $alvo -Destination $bk -Force
+        $Alterados += $dest
+    } else {
+        $Incluidos += $dest
+    }
+    # 3. grava o conteudo corrigido (UTF-8 sem BOM)
+    [System.IO.File]::WriteAllText($alvo, $Arquivos[$dest], $Utf8NoBom)
+    # 4. copia versionada do arquivo novo
+    $cp = Join-Path $DirVer ($dest -replace "[\\/]", "__")
+    Copy-Item -LiteralPath $alvo -Destination $cp -Force
+}
+
+# --- 5. copia versionada de si mesmo ---
+Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $DirVer "patch_v018_2026-09-27_1321.ps1") -Force
+
+# --- 6. registro ---
+$linha = "$Ver;2026-09-27 13:21;openalgo_plugin\broker\b3\api\data.py;Periodicidade do grafico restaurada: intraday real (1m/2m/5m/15m/30m/1h) via Yahoo Finance, diario via Brapi; timeframe_map expandido e cache de 60s`n"
+[System.IO.File]::AppendAllText($Registro, $linha, $Utf8NoBom)
+
+# --- 7. resumo + autodestruicao ---
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Patch $Ver aplicado:"
+foreach ($a in $Alterados) { Write-Host "  alterado : $a" }
+foreach ($a in $Incluidos) { Write-Host "  incluido : $a" }
+Write-Host "Backup (versao antiga): patches\$Ver\anteriores\"
+Write-Host "Copias versionadas    : patches\$Ver\"
+Write-Host "Registro atualizado   : patches\registro.csv"
+Write-Host "========================================"
+Read-Host "Pressione ENTER para concluir e remover o script"
+
+Remove-Item -LiteralPath $PSCommandPath -Force
+Write-Host "Script de patch removido (autodestruicao). Ate logo."

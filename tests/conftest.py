@@ -1,4 +1,4 @@
-"""Stubs das dependÃªncias do core OpenAlgo para importar o plugin standalone."""
+"""Stubs das dependências do core OpenAlgo para importar o plugin standalone."""
 import logging
 import sys
 import types
@@ -51,5 +51,5 @@ try:
         monkeypatch.setenv(
             "B3_SANDBOX_STATE_FILE", str(tmp_path / "b3_sandbox_state.json")
         )
-except ImportError:  # pragma: no cover â€” ambiente sem pytest (stubs standalone)
+except ImportError:  # pragma: no cover — ambiente sem pytest (stubs standalone)
     pass

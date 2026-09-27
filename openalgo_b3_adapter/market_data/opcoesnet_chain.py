@@ -63,7 +63,7 @@ def _fetch_matrix_html(underlying: str, side: str) -> Optional[str]:
         response = requests.get(url, headers=_HEADERS, timeout=TIMEOUT)
         response.raise_for_status()
         return response.text
-    except Exception:  # noqa: BLE001 â€” offline e uma condicao normal aqui
+    except Exception:  # noqa: BLE001 — offline e uma condicao normal aqui
         return None
 
 
