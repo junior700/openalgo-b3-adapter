@@ -56,8 +56,11 @@ def test_hgbrasil_provider_maps_to_quote():
 def test_openalgo_quote_shape():
     prov = BrapiQuoteProvider(fetch=_brapi_fetch)
     data = to_openalgo_quote(prov.get_quote("PETR4"))
+    # timeSec (epoch do ultimo negocio) entrou no v022: e ele que acaba
+    # com o candle fantasma - o terminal passa a carimbar o tick com o
+    # tempo real do negocio, nao com o relogio do navegador.
     assert set(data) == {"bid", "ask", "open", "high", "low", "ltp",
-                         "prev_close", "volume", "oi", "tick_size"}
+                         "prev_close", "volume", "oi", "tick_size", "timeSec"}
     assert data["ltp"] == 41.18
     assert data["oi"] == 0
     assert isinstance(data["volume"], int)
