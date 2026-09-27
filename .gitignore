@@ -12,3 +12,4 @@ venv/
 htmlcov/
 .DS_Store
 token_github.txt
+openalgo/
