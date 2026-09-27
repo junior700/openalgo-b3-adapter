@@ -63,7 +63,20 @@ $op = Read-Host "Opcao"
 Garantir-Identidade
 
 switch ($op) {
-    "1" { git fetch (Url-Com-Token $script:Repo) main }
+    "1" {
+        git fetch (Url-Com-Token $script:Repo) main
+        if ($LASTEXITCODE -eq 0) {
+            # fetch so BAIXA os commits; o merge --ff-only e quem aplica no projeto.
+            git merge --ff-only FETCH_HEAD
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Novidades do GitHub aplicadas no projeto." -ForegroundColor Green
+            } else {
+                Write-Host "Nao foi possivel avancar automaticamente (historicos divergentes)." -ForegroundColor Yellow
+                Write-Host "No cmd, na pasta do projeto, rode: git pull --no-rebase" -ForegroundColor Yellow
+                Write-Host "Se pedir mensagem de commit, aceite o texto sugerido e salve." -ForegroundColor Yellow
+            }
+        } else { Write-Host "Fetch falhou." -ForegroundColor Red }
+    }
     "2" {
         git add -A
         if (-not (git diff --cached --quiet)) {
@@ -76,6 +89,8 @@ switch ($op) {
     "3" {
         git fetch (Url-Com-Token $script:Repo) main
         if ($LASTEXITCODE -eq 0) {
+            # aplicar as novidades ANTES de enviar (evita push reprovado por divergencia)
+            git merge --ff-only FETCH_HEAD
             git add -A
             if (-not (git diff --cached --quiet)) {
                 $msg = Read-Host "Mensagem de commit"
