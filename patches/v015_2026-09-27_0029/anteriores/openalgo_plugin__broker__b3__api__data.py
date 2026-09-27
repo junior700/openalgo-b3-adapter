@@ -46,9 +46,6 @@ class BrokerData:
     def __init__(self, auth_token, feed_token=None):
         self.auth_token = auth_token
         self.provider = _provider()
-        # intervals_service.get_intervals_with_auth() anuncia ao grafico os
-        # intervalos deste mapa; so o diario 'D' e suportado (Brapi).
-        self.timeframe_map = {"D": "D"}
 
     # ---------------------------------------------------------------- quotes
     def get_quotes(self, symbol: str, exchange: str) -> dict:
@@ -115,12 +112,7 @@ class BrokerData:
             series = (results[0] or {}).get("data", {}).get("historicalDataPrice", [])
             for r in series:
                 rows.append({
-                    # Epoch (segundos, UTC) diretamente -- e o formato que o
-                    # front-end (openalgo-charts) espera na coluna timestamp.
-                    # Um datetime aqui e serializado pelo Flask como string
-                    # RFC-1123 ("Sat, 26 Sep 2026 03:00:00 GMT"), que o parser
-                    # do grafico rejeita com "unparseable IST time string".
-                    "timestamp": int(r["date"]),
+                    "timestamp": _dt.datetime.fromtimestamp(r["date"], _dt.timezone.utc),
                     "open": r.get("open"), "high": r.get("high"),
                     "low": r.get("low"), "close": r.get("close"),
                     "volume": r.get("volume", 0), "oi": 0,

@@ -115,12 +115,7 @@ class BrokerData:
             series = (results[0] or {}).get("data", {}).get("historicalDataPrice", [])
             for r in series:
                 rows.append({
-                    # Epoch (segundos, UTC) diretamente -- e o formato que o
-                    # front-end (openalgo-charts) espera na coluna timestamp.
-                    # Um datetime aqui e serializado pelo Flask como string
-                    # RFC-1123 ("Sat, 26 Sep 2026 03:00:00 GMT"), que o parser
-                    # do grafico rejeita com "unparseable IST time string".
-                    "timestamp": int(r["date"]),
+                    "timestamp": _dt.datetime.fromtimestamp(r["date"], _dt.timezone.utc),
                     "open": r.get("open"), "high": r.get("high"),
                     "low": r.get("low"), "close": r.get("close"),
                     "volume": r.get("volume", 0), "oi": 0,

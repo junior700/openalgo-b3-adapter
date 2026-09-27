@@ -55,24 +55,6 @@ if (Test-Path $pluginSrc) {
     Write-Host "[2/5] AVISO: plugin nao encontrado em openalgo_plugin\broker\b3." -ForegroundColor Yellow
 }
 
-# --- [2b] injeta a B3 no dropdown do frontend (idempotente) ---
-$distAssets = Join-Path $OA "frontend\dist\assets"
-$bsFile = Get-ChildItem -Path $distAssets -Filter "BrokerSelect-*.js" -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($bsFile -and -not (Select-String -Path $bsFile.FullName -Pattern 'id:`b3`' -Quiet)) {
-    Write-Host "[2b] Injetando B3 no dropdown do frontend..."
-    $c = Get-Content $bsFile.FullName -Raw
-    $c = $c.Replace('zerodha`,name:`Zerodha`,authType:`oauth`}', 'zerodha`,name:`Zerodha`,authType:`oauth`},{id:`b3`,name:`B3 Brasil (Sandbox)`,authType:`totp`}')
-    $c = $c.Replace('case`aliceblue`:case`angel`', 'case`b3`:case`aliceblue`:case`angel`')
-    if ($c.Contains('id:`b3`')) {
-        [System.IO.File]::WriteAllText($bsFile.FullName, $c, (New-Object System.Text.UTF8Encoding($false)))
-        Get-ChildItem -Path $distAssets -Filter ($bsFile.Name + ".*") -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne $bsFile.Name } | Remove-Item -Force
-        Write-Host "[2b] Dropdown atualizado (B3 visivel na lista)."
-    } else {
-        Write-Host "[2b] AVISO: padrao do frontend nao reconhecido; dropdown nao alterado." -ForegroundColor Yellow
-    }
-}
-
 # --- [3/5] ambiente virtual ---
 $py = Join-Path $OA ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
@@ -101,16 +83,12 @@ if (-not (Test-Path $py)) {
 & $py -m pip install -e $PSScriptRoot --quiet --no-deps 2>$null
 Write-Host "[4/5] Adapter B3 instalado no ambiente."
 
-# --- configura o .env do OpenAlgo (padrao + plugin B3) ---
+# --- configura o .env do OpenAlgo se ainda nao existir ---
 $envFile = Join-Path $OA ".env"
 $envSample = Join-Path $OA ".sample.env"
-$precisa = $true
-if (Test-Path $envFile) {
-    $linhaVb = Select-String -Path $envFile -Pattern "VALID_BROKERS" | Select-Object -First 1
-    if ($null -ne $linhaVb -and $linhaVb.Line.Contains(",b3")) { $precisa = $false }
-}
-if ($precisa -and (Test-Path $envSample)) {
-    Write-Host "[4b] Gerando .env (padrao do OpenAlgo + plugin B3)..."
+if (-not (Test-Path $envFile) -and (Test-Path $envSample)) {
+    Write-Host "[4b] Criando .env a partir do .sample.env (padrao + plugin B3)..."
+    $c = Get-Content $envSample -Raw
     $bytes = New-Object byte[] 32
     (New-Object System.Security.Cryptography.RNGCryptoServiceProvider).GetBytes($bytes)
     $appkey = ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
@@ -118,24 +96,13 @@ if ($precisa -and (Test-Path $envSample)) {
     $pepper = ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
     (New-Object System.Security.Cryptography.RNGCryptoServiceProvider).GetBytes($bytes)
     $salt = (($bytes | ForEach-Object { $_.ToString("x2") }) -join "").Substring(0, 32)
-
-    $final = @()
-    foreach ($l in (Get-Content $envSample)) {
-        if     ($l.StartsWith("VALID_BROKERS"))  { $l = $l.TrimEnd("'") + ",b3'" }
-        elseif ($l.StartsWith("REDIRECT_URL"))   { $l = $l.Replace("<broker>", "b3") }
-        elseif ($l.StartsWith("APP_KEY"))        { $l = "APP_KEY = '" + $appkey + "'" }
-        elseif ($l.StartsWith("API_KEY_PEPPER")) { $l = "API_KEY_PEPPER = '" + $pepper + "'" }
-        elseif ($l.StartsWith("FERNET_SALT"))     { $l = "FERNET_SALT = '" + $salt + "'" }
-        $final += $l
-    }
-    $final += ""
-    $final += "# --- Plugin B3 Brasil (corretora fantasma) ---"
-    $final += "B3_BROKER_GATEWAY=sandbox"
-    $final += "B3_SANDBOX_STATE_FILE=ghost_state.json"
-    $final += "B3_SANDBOX_LIVE_FILLS=1"
-    $final += "B3_SANDBOX_AUTO_TICK=30"
-    $final += "B3_SANDBOX_INITIAL_CASH=100000"
-    [System.IO.File]::WriteAllLines($envFile, $final, (New-Object System.Text.ASCIIEncoding))
+    $c = $c -replace "OPENALGO_PLACEHOLDER_APP_KEY_REGENERATE_BEFORE_USE", $appkey
+    $c = $c -replace "OPENALGO_PLACEHOLDER_API_KEY_PEPPER_REGENERATE_BEFORE_USE", $pepper
+    $c = $c -replace "OPENALGO_PLACEHOLDER_FERNET_SALT_REGENERATE_BEFORE_USE", $salt
+    $c = $c -replace "'http://127.0.0.1:5000/<broker>/callback'", "'http://127.0.0.1:5000/b3/callback'"
+    $c = $c -replace "'zerodha'([\s\S]*)$", "'zerodha,b3'`n`n# --- Plugin B3 Brasil (corretora fantasma) ---`nB3_BROKER_GATEWAY=sandbox`nB3_SANDBOX_STATE_FILE=ghost_state.json`nB3_SANDBOX_LIVE_FILLS=1`nB3_SANDBOX_AUTO_TICK=30`nB3_SANDBOX_INITIAL_CASH=100000`n"
+    # sem BOM, encoding ASCII
+    [System.IO.File]::WriteAllText($envFile, $c, (New-Object System.Text.ASCIIEncoding))
 }
 
 # --- [5/5] abre o navegador apos o servidor subir e sobe o servidor ---

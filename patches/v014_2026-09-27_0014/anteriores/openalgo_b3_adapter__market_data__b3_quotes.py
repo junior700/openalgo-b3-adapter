@@ -1,14 +1,14 @@
-"""Provedores de cotaÃ§Ãµes da B3 (Brapi + HG Brasil).
+"""Provedores de cotações da B3 (Brapi + HG Brasil).
 
 - BrapiQuoteProvider:    https://brapi.dev (gratuito; PETR4/VALE3/ITUB4/MGLU3 sem chave)
 - HGBrasilQuoteProvider: https://hgbrasil.com (gratuito com key)
 - CompositeQuoteProvider: fallback em cadeia com cache TTL.
 
-Provedores recebem `fetch` injetÃ¡vel (httpx por padrÃ£o) -> testes offline.
+Provedores recebem `fetch` injetável (httpx por padrão) -> testes offline.
 
-Nota honesta: cotaÃ§Ã£o intraday da Brapi Ã© o Ãºltimo preÃ§o consolidado disponÃ­vel
-(atraso depende do plano), NÃƒO tick-a-tick. Tempo real real exige B3 WebFeed
-(licenÃ§a paga) â€” veja docs/BROKERS-BR.md.
+Nota honesta: cotação intraday da Brapi é o último preço consolidado disponível
+(atraso depende do plano), NÃO tick-a-tick. Tempo real real exige B3 WebFeed
+(licença paga) — veja docs/BROKERS-BR.md.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from openalgo_b3_adapter.config.b3_config import get_config
-from openalgo_b3_adapter.utils.b3_instruments import classify_symbol, strip_fractional
+from openalgo_b3_adapter.utils.b3_instruments import classify_symbol
 
 __all__ = ["Quote", "QuoteProvider", "BrapiQuoteProvider",
            "HGBrasilQuoteProvider", "CompositeQuoteProvider", "to_openalgo_quote"]
@@ -84,12 +84,9 @@ class BrapiQuoteProvider(QuoteProvider):
 
     def get_quote(self, symbol: str) -> Quote:
         cfg = get_config()
-        # Mercado fracionario (sufixo "F") compartilha o mesmo preco do lote
-        # padrao; provedores externos (Brapi/HG) nao conhecem o ticker "F".
-        query_symbol = strip_fractional(symbol)
         headers = {"Authorization": f"Bearer {cfg.brapi_api_key}"} if cfg.brapi_api_key else {}
         payload = self._fetch(f"{cfg.brapi_base_url}/api/v2/stocks/quote",
-                              headers=headers, params={"symbols": query_symbol})
+                              headers=headers, params={"symbols": symbol})
         results = payload.get("results") or []
         if not results:
             raise ValueError(f"Sem dados para '{symbol}' na Brapi")
@@ -115,11 +112,10 @@ class HGBrasilQuoteProvider(QuoteProvider):
 
     def get_quote(self, symbol: str) -> Quote:
         cfg = get_config()
-        query_symbol = strip_fractional(symbol)
         payload = self._fetch(f"{cfg.hgbrasil_base_url}/finance/stock",
-                              params={"symbol": query_symbol, "key": cfg.hgbrasil_api_key or "SUA-CHAVE"})
+                              params={"symbol": symbol, "key": cfg.hgbrasil_api_key or "SUA-CHAVE"})
         results = (payload or {}).get("results") or {}
-        data = results.get(query_symbol)
+        data = results.get(symbol)
         if not data:
             raise ValueError(f"Sem dados para '{symbol}' na HG Brasil")
         inst = classify_symbol(symbol)
@@ -138,7 +134,7 @@ class HGBrasilQuoteProvider(QuoteProvider):
 
 
 class CompositeQuoteProvider(QuoteProvider):
-    """Tenta provedores em ordem; primeiro que responde vence. Cache TTL por sÃ­mbolo."""
+    """Tenta provedores em ordem; primeiro que responde vence. Cache TTL por símbolo."""
 
     def __init__(self, providers: Optional[List[QuoteProvider]] = None,
                  fetch: Optional[Fetch] = None, ttl: Optional[float] = None):
@@ -159,7 +155,7 @@ class CompositeQuoteProvider(QuoteProvider):
                 if q.ltp > 0:
                     self._cache[symbol] = q
                     return q
-                errors.append(f"{provider.name}: preÃ§o zerado")
+                errors.append(f"{provider.name}: preço zerado")
             except Exception as exc:  # noqa: BLE001 - fallback intencional
                 errors.append(f"{provider.name}: {exc}")
-        raise ValueError(f"Nenhum provedor retornou cotaÃ§Ã£o para '{symbol}': {'; '.join(errors)}")
+        raise ValueError(f"Nenhum provedor retornou cotação para '{symbol}': {'; '.join(errors)}")

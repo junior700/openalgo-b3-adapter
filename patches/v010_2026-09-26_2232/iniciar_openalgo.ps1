@@ -55,24 +55,6 @@ if (Test-Path $pluginSrc) {
     Write-Host "[2/5] AVISO: plugin nao encontrado em openalgo_plugin\broker\b3." -ForegroundColor Yellow
 }
 
-# --- [2b] injeta a B3 no dropdown do frontend (idempotente) ---
-$distAssets = Join-Path $OA "frontend\dist\assets"
-$bsFile = Get-ChildItem -Path $distAssets -Filter "BrokerSelect-*.js" -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($bsFile -and -not (Select-String -Path $bsFile.FullName -Pattern 'id:`b3`' -Quiet)) {
-    Write-Host "[2b] Injetando B3 no dropdown do frontend..."
-    $c = Get-Content $bsFile.FullName -Raw
-    $c = $c.Replace('zerodha`,name:`Zerodha`,authType:`oauth`}', 'zerodha`,name:`Zerodha`,authType:`oauth`},{id:`b3`,name:`B3 Brasil (Sandbox)`,authType:`totp`}')
-    $c = $c.Replace('case`aliceblue`:case`angel`', 'case`b3`:case`aliceblue`:case`angel`')
-    if ($c.Contains('id:`b3`')) {
-        [System.IO.File]::WriteAllText($bsFile.FullName, $c, (New-Object System.Text.UTF8Encoding($false)))
-        Get-ChildItem -Path $distAssets -Filter ($bsFile.Name + ".*") -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne $bsFile.Name } | Remove-Item -Force
-        Write-Host "[2b] Dropdown atualizado (B3 visivel na lista)."
-    } else {
-        Write-Host "[2b] AVISO: padrao do frontend nao reconhecido; dropdown nao alterado." -ForegroundColor Yellow
-    }
-}
-
 # --- [3/5] ambiente virtual ---
 $py = Join-Path $OA ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
@@ -136,6 +118,8 @@ if ($precisa -and (Test-Path $envSample)) {
     $final += "B3_SANDBOX_AUTO_TICK=30"
     $final += "B3_SANDBOX_INITIAL_CASH=100000"
     [System.IO.File]::WriteAllLines($envFile, $final, (New-Object System.Text.ASCIIEncoding))
+}
+
 }
 
 # --- [5/5] abre o navegador apos o servidor subir e sobe o servidor ---

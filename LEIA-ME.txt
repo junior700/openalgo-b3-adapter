@@ -2,6 +2,7 @@ INICIADOR OPENALGO + B3 (1 clique)
 =================================
 1. Extraia TODO o conteudo deste zip na RAIZ do projeto
 2. De dois cliques em: iniciar_openalgo.bat
-3. Ele clona o core oficial (marketcalls/openalgo), monta o
-   ambiente e abre http://127.0.0.1:5000
-   Login: admin / OpenAlgo@B3Demo2026
+3. Abre http://127.0.0.1:5000 - na tela de conectividade,
+   selecione "B3 Brasil (Sandbox)" e clique em Connect Account
+IMPORTANTE: apos atualizar, faca um hard refresh no navegador
+(Ctrl+Shift+R) para pegar o frontend novo.

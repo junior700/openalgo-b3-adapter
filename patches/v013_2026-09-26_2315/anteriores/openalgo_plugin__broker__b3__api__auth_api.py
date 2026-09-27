@@ -17,13 +17,10 @@ logger = get_logger(__name__)
 
 
 def authenticate_broker(code, password=None, totp_code=None):
-    """Valida credencial e devolve (auth_token, error_message).
-
-    No modo sandbox a credencial e irrelevante: a GUI do OpenAlgo conecta
-    sem digitar nada (o botao "Connect Account" navega para /b3/callback
-    sem parametros), entao ausencia de code auto-autentica como "sandbox".
-    """
+    """Valida credencial e devolve (auth_token, error_message)."""
     code = (code or "").strip()
+    if not code:
+        return None, "Informe a credencial da corretora (campo API KEY)"
 
     try:
         gateway = get_gateway()
@@ -33,8 +30,6 @@ def authenticate_broker(code, password=None, totp_code=None):
         return None, str(exc)
 
     if getattr(gateway, "name", "") == "sandbox":
-        if not code:
-            code = "sandbox"
         token = f"SANDBOX::{code}"
         try:
             gateway.ensure_auth(token)
@@ -46,6 +41,4 @@ def authenticate_broker(code, password=None, totp_code=None):
     # Gateways reais (nuinvest/btg): o token de sessao e a propria credencial
     # validada pela corretora. Ate os gateways concretos serem implementados,
     # get_gateway() ja levanta NotImplementedError quando nao ha credenciais.
-    if not code:
-        return None, "Informe a credencial da corretora (campo API KEY)"
     return code, None

@@ -6,7 +6,7 @@ BrokerData e a classe que o core instancia com o auth token; metodos:
     get_history(symbol, exchange, interval, start, end) -> pd.DataFrame
     get_depth(symbol, exchange)          -> dict bids/asks
 
-Fontes: Brapi/HG Brasil (plano gratuito, cotaÃ§Ã£o consolidada) + book
+Fontes: Brapi/HG Brasil (plano gratuito, cotação consolidada) + book
 simulado para dev. Tempo real/licenca B3: docs/BROKERS-BR.md.
 """
 import datetime as _dt
@@ -15,7 +15,6 @@ import pandas as pd
 
 from database.token_db import get_br_symbol
 from openalgo_b3_adapter.config.b3_config import resolve_segment
-from openalgo_b3_adapter.utils.b3_instruments import strip_fractional
 from openalgo_b3_adapter.market_data.b3_orderbook import (
     SimulatedBookProvider, book_to_openalgo_depth,
 )
@@ -29,8 +28,7 @@ from utils.logging import get_logger
 logger = get_logger(__name__)
 
 # intervalos suportados: 'D' (diario) via Brapi; intraday exige plano/licenca
-# (comparacao normalizada em minusculas no metodo, entao guardamos ja assim)
-_SUPPORTED_INTERVALS = {"d", "1d"}
+_SUPPORTED_INTERVALS = {"D", "1d"}
 _HIST_CACHE: dict = {}
 
 
@@ -46,9 +44,6 @@ class BrokerData:
     def __init__(self, auth_token, feed_token=None):
         self.auth_token = auth_token
         self.provider = _provider()
-        # intervals_service.get_intervals_with_auth() anuncia ao grafico os
-        # intervalos deste mapa; so o diario 'D' e suportado (Brapi).
-        self.timeframe_map = {"D": "D"}
 
     # ---------------------------------------------------------------- quotes
     def get_quotes(self, symbol: str, exchange: str) -> dict:
@@ -90,9 +85,6 @@ class BrokerData:
                 "pago da Brapi ou licenca B3 Market Data (docs/BROKERS-BR.md)."
             )
         br_symbol = get_br_symbol(symbol, exchange) or symbol
-        # Mercado fracionario (sufixo "F") compartilha o mesmo historico do
-        # lote padrao; a Brapi nao conhece o ticker "F".
-        query_symbol = strip_fractional(br_symbol)
         import os
         import httpx
         from openalgo_b3_adapter.config.b3_config import get_config
@@ -104,7 +96,7 @@ class BrokerData:
         resp = httpx.get(
             f"{cfg.brapi_base_url}/api/v2/stocks/historical",
             headers=headers,
-            params={"symbols": query_symbol, "startDate": start, "endDate": end, "interval": "1d"},
+            params={"symbols": br_symbol, "startDate": start, "endDate": end, "interval": "1d"},
             timeout=10,
         )
         resp.raise_for_status()
@@ -115,12 +107,7 @@ class BrokerData:
             series = (results[0] or {}).get("data", {}).get("historicalDataPrice", [])
             for r in series:
                 rows.append({
-                    # Epoch (segundos, UTC) diretamente -- e o formato que o
-                    # front-end (openalgo-charts) espera na coluna timestamp.
-                    # Um datetime aqui e serializado pelo Flask como string
-                    # RFC-1123 ("Sat, 26 Sep 2026 03:00:00 GMT"), que o parser
-                    # do grafico rejeita com "unparseable IST time string".
-                    "timestamp": int(r["date"]),
+                    "timestamp": _dt.datetime.fromtimestamp(r["date"], _dt.timezone.utc),
                     "open": r.get("open"), "high": r.get("high"),
                     "low": r.get("low"), "close": r.get("close"),
                     "volume": r.get("volume", 0), "oi": 0,
