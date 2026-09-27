@@ -632,12 +632,25 @@ Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $DirVer "patch_v02
 $linha = "$Ver;2026-09-27 22:14;iniciar_b3.ps1|replicar_github.ps1|LEIA-ME.txt|iniciar_openalgo.bat;Fim da bagunca de 3 scripts de git na raiz: sync (baixar+enviar) agora vive so no iniciar_b3.ps1 [3], com fallback automatico de stash em historico divergente. replicar_github fica so p/ primeiro clone. iniciar_openalgo.bat restaurado.`n"
 [System.IO.File]::AppendAllText($Registro, $linha, $Utf8NoBom)
 
+# --- 6b. remove os scripts de git obsoletos (absorvidos pelo iniciar_b3.ps1 [3]) ---
+$Removidos = @()
+foreach ($obsoleto in @("publicar_github.bat", "sincronizar_github.ps1")) {
+    $alvoObs = Join-Path $Raiz $obsoleto
+    if (Test-Path $alvoObs) {
+        $bkObs = Join-Path $DirAnt ($obsoleto -replace "[\/]", "__")
+        Copy-Item -LiteralPath $alvoObs -Destination $bkObs -Force
+        Remove-Item -LiteralPath $alvoObs -Force
+        $Removidos += $obsoleto
+    }
+}
+
 # --- 7. resumo + autodestruicao ---
 Write-Host ""
 Write-Host "========================================"
 Write-Host "Patch $Ver aplicado:"
 foreach ($a in $Alterados) { Write-Host "  alterado : $a" }
 foreach ($a in $Incluidos) { Write-Host "  incluido : $a" }
+foreach ($a in $Removidos) { Write-Host "  removido : $a (agora dentro do iniciar_b3.ps1 [3])" }
 Write-Host "Backup (versao antiga): patches\$Ver\anteriores\"
 Write-Host "Copias versionadas    : patches\$Ver\"
 Write-Host "Registro atualizado   : patches\registro.csv"
